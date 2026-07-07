@@ -15,12 +15,16 @@ const state = {
   stages: [],
   kinds: [],
   artifactKinds: [],
+  taskRoutes: [],
+  taskStatuses: [],
   projects: [],
   guidance: [],
   artifacts: [],
+  tasks: [],
   activeProject: null, // selected project in the projects view
   activeGuidance: null, // { scope, slug }
   activeArtifact: null, // { project, id }
+  activeTask: null, // { project, id }
   captureTarget: null, // project new captures file into (plan §4.3)
   inboxKind: '', // inbox kind filter
 };
@@ -116,6 +120,9 @@ function openHit(hit) {
   } else if (hit.type === 'artifact') {
     setMode('inbox');
     selectArtifact(hit.project, base);
+  } else if (hit.type === 'task') {
+    setMode('tasks');
+    selectTask(hit.project, base);
   } else if (hit.project) {
     setMode('projects');
     selectProject(hit.project);
@@ -224,6 +231,148 @@ async function refreshInbox() {
   state.artifacts = await window.verqury.listArtifacts({});
   if (searchEl.value.trim()) return;
   if (state.mode === 'inbox') renderInboxList();
+}
+
+/* ---------- tasks ---------- */
+
+function renderTaskList() {
+  listEl.replaceChildren(h('button', { class: 'btn wide', onclick: showNewTaskForm }, '＋ New task'));
+  if (!state.tasks.length) {
+    listEl.append(h('div', { class: 'project-card', text: 'No tasks yet.' }));
+    return;
+  }
+  for (const route of state.taskRoutes) {
+    const lane = state.tasks.filter((t) => t.route === route);
+    if (!lane.length) continue;
+    listEl.append(h('div', { class: 'section-label', text: route }));
+    for (const t of lane) {
+      const active = state.activeTask && state.activeTask.id === t.id;
+      listEl.append(
+        h('div', { class: `task-card${active ? ' active' : ''}`, onclick: () => selectTask(t.project, t.id) },
+          h('div', { class: 'name', text: t.title }),
+          h('div', { class: 'card-meta' },
+            h('span', { class: `badge status-${t.status}`, text: t.status }),
+            h('span', { class: 'badge', text: t.project }))),
+      );
+    }
+  }
+}
+
+function renderTaskDetail(t, artifacts) {
+  const statusSel = h('select', { onchange: async (e) => { await window.verqury.updateTask(t.project, t.id, { status: e.target.value }); toast('Status updated'); await refreshTasks(); } });
+  for (const s of state.taskStatuses) {
+    const o = h('option', { value: s, text: s });
+    if (s === t.status) o.selected = true;
+    statusSel.append(o);
+  }
+  const routeSel = h('select', { onchange: async (e) => { await window.verqury.updateTask(t.project, t.id, { route: e.target.value }); toast('Route updated'); await refreshTasks(); } });
+  for (const r of state.taskRoutes) {
+    const o = h('option', { value: r, text: r });
+    if (r === t.route) o.selected = true;
+    routeSel.append(o);
+  }
+
+  const body = h('pre', { class: 'artifact-body' });
+  body.textContent = t.body ?? '';
+
+  const handoff = h('button', { class: 'btn primary', onclick: async () => {
+    await window.verqury.handoffTask(t.project, t.id);
+    toast('Payload copied — handed off');
+    await refreshTasks();
+    selectTask(t.project, t.id);
+  } }, 'Hand off (copy payload)');
+
+  // Attach-report: pick one of the project's artifacts as the completion report.
+  const reportSel = h('select', {});
+  reportSel.append(h('option', { value: '', text: artifacts.length ? 'Pick a report artifact…' : 'No artifacts captured yet' }));
+  for (const a of artifacts) reportSel.append(h('option', { value: a.id, text: `${a.kind} · ${(a.preview || a.id).slice(0, 40)}` }));
+  const attach = h('button', { class: 'btn', onclick: async () => {
+    if (!reportSel.value) return toast('Pick an artifact first');
+    await window.verqury.attachReport(t.project, t.id, reportSel.value);
+    toast('Report attached — task done');
+    await refreshTasks();
+    selectTask(t.project, t.id);
+  } }, 'Attach report');
+
+  const del = h('button', { class: 'btn', onclick: async () => {
+    await window.verqury.deleteTask(t.project, t.id);
+    state.activeTask = null;
+    toast('Task deleted');
+    await refreshTasks();
+    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select a task.' }));
+  } }, 'Delete');
+
+  const reportLine = t.report
+    ? h('div', { class: 'detail-sub', text: `report: artifact ${t.report}` })
+    : null;
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: t.title })),
+    h('div', { class: 'detail-sub', text: `${t.project} · created ${(t.created ?? '').replace('T', ' ').slice(0, 16)}${t.surface ? ` · surface ${t.surface}` : ''}` }),
+    reportLine,
+    h('div', { class: 'form-row' }, h('label', {}, 'Status', statusSel), h('label', {}, 'Route', routeSel)),
+    h('div', { class: 'detail-actions' }, handoff, del),
+    h('div', { class: 'form-row' }, h('label', {}, 'Report', h('div', { class: 'tag-edit' }, reportSel, attach))),
+    h('h2', { class: 'section-label', text: 'Payload' }),
+    body,
+  );
+}
+
+async function showNewTaskForm() {
+  state.activeTask = null;
+  const packets = await window.verqury.listPackets();
+  const surfaces = [...new Set(packets.map((p) => p.surface).filter(Boolean))];
+
+  const titleInput = h('input', { type: 'text', placeholder: 'Task title' });
+  const projectSel = h('select', {});
+  for (const p of state.projects) projectSel.append(h('option', { value: p.slug, text: p.name }));
+  const routeSel = h('select', {});
+  for (const r of state.taskRoutes) routeSel.append(h('option', { value: r, text: r }));
+  const surfaceSel = h('select', {});
+  surfaceSel.append(h('option', { value: '', text: '(no surface)' }));
+  for (const s of surfaces) surfaceSel.append(h('option', { value: s, text: s }));
+  const bodyArea = h('textarea', { spellcheck: 'false', placeholder: 'Description / hand-off payload' });
+
+  const create = h('button', { class: 'btn primary', onclick: async () => {
+    if (!titleInput.value.trim()) return toast('Title is required');
+    if (!projectSel.value) return toast('Create a project first');
+    const t = await window.verqury.addTask(projectSel.value, {
+      title: titleInput.value.trim(), route: routeSel.value, surface: surfaceSel.value || null, body: bodyArea.value,
+    });
+    await refreshTasks();
+    selectTask(t.project, t.id);
+    toast('Task created');
+  } }, 'Create');
+  const cancel = h('button', { class: 'btn', onclick: () => renderTaskList() }, 'Cancel');
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: 'New task' })),
+    h('div', { class: 'form' },
+      h('label', {}, 'Title', titleInput),
+      h('div', { class: 'form-row' }, h('label', {}, 'Project', projectSel), h('label', {}, 'Route', routeSel), h('label', {}, 'Surface', surfaceSel)),
+      h('label', {}, 'Payload', bodyArea),
+      h('div', { class: 'detail-actions' }, create, cancel)),
+  );
+}
+
+async function selectTask(project, id) {
+  state.activeTask = { project, id };
+  renderTaskList();
+  try {
+    const [task, artifacts] = await Promise.all([
+      window.verqury.getTask(project, id),
+      window.verqury.listArtifacts({ project }),
+    ]);
+    renderTaskDetail(task, artifacts);
+  } catch {
+    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Task not found.' }));
+  }
+}
+
+async function refreshTasks() {
+  state.tasks = await window.verqury.listTasks({});
+  if (searchEl.value.trim()) return;
+  if (state.mode === 'tasks') renderTaskList();
 }
 
 /* ---------- detail panes ---------- */
@@ -448,9 +597,12 @@ function setMode(mode) {
   } else if (mode === 'guidance') {
     renderGuidanceList();
     detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select guidance, or create new.' }));
-  } else {
+  } else if (mode === 'inbox') {
     renderInboxList();
     detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select an artifact, or press Ctrl+Alt+C to capture.' }));
+  } else {
+    renderTaskList();
+    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select a task, or create a new one.' }));
   }
 }
 
@@ -464,7 +616,8 @@ searchEl.addEventListener('input', () => {
     if (!q) {
       if (state.mode === 'projects') return renderProjectList();
       if (state.mode === 'guidance') return renderGuidanceList();
-      return renderInboxList();
+      if (state.mode === 'inbox') return renderInboxList();
+      return renderTaskList();
     }
     renderSearchResults(await window.verqury.search(q));
   }, 180);
@@ -474,15 +627,19 @@ async function refreshAll() {
   await refreshProjects();
   await refreshGuidance();
   await refreshInbox();
+  await refreshTasks();
 }
 
 async function init() {
   state.stages = await window.verqury.getStages();
   state.kinds = await window.verqury.guidanceKinds();
   state.artifactKinds = await window.verqury.artifactKinds();
+  state.taskRoutes = await window.verqury.taskRoutes();
+  state.taskStatuses = await window.verqury.taskStatuses();
   state.projects = await window.verqury.listProjects();
   state.guidance = await window.verqury.listAllGuidance();
   state.artifacts = await window.verqury.listArtifacts({});
+  state.tasks = await window.verqury.listTasks({});
   state.captureTarget = (await window.verqury.getActiveProject()) || (state.projects[0]?.slug ?? null);
   renderProjectList();
   if (state.projects.length) await selectProject(state.projects[0].slug);

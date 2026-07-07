@@ -70,6 +70,21 @@ function setupIpc() {
     fs.writeFileSync(filePath, String(text ?? ''));
     return filePath;
   });
+
+  ipcMain.handle('task:routes', () => api.getTaskRoutes());
+  ipcMain.handle('task:statuses', () => api.getTaskStatuses());
+  ipcMain.handle('tasks:list', (_e, filters) => api.getTasks(root, filters));
+  ipcMain.handle('task:get', (_e, projectSlug, id) => api.getTask(root, projectSlug, id));
+  ipcMain.handle('task:add', (_e, projectSlug, payload) => api.createTask(root, projectSlug, payload));
+  ipcMain.handle('task:update', (_e, projectSlug, id, patch) => api.updateTask(root, projectSlug, id, patch));
+  ipcMain.handle('task:delete', (_e, projectSlug, id) => api.deleteTask(root, projectSlug, id));
+  ipcMain.handle('task:handoff', (_e, projectSlug, id) => {
+    const { payload } = api.renderHandoff(root, projectSlug, id);
+    clipboard.writeText(payload);
+    api.updateTask(root, projectSlug, id, { status: 'handed-off' });
+    return { payload };
+  });
+  ipcMain.handle('task:attachReport', (_e, projectSlug, id, artifactId) => api.attachReport(root, projectSlug, id, artifactId));
 }
 
 function notify(body) {
@@ -215,6 +230,25 @@ async function runVerify(outDir) {
     await dom("(() => { const s = document.querySelector('.head-actions select'); if (s) { s.value = 'terminal-build'; s.dispatchEvent(new Event('change')); } })()");
     await wait(300);
     result.bootstrapPreview = await dom("(document.querySelector('.artifact-body')?.textContent || '').includes('build context')");
+
+    // (8) task router loop (done-when): create → hand off → capture report → attach → echo.
+    const task = api.createTask(root, slug, { title: 'Fetch pricing', route: 'browser-agent', surface: 'browser-agent', body: 'Look up competitor pricing.' });
+    await dom(`window.verqury.handoffTask(${JSON.stringify(slug)}, ${JSON.stringify(task.id)})`);
+    await wait(200);
+    result.taskHandoffClipboard = /Look up competitor pricing/.test(clipboard.readText());
+    result.taskHandedOff = api.getTask(root, slug, task.id).status === 'handed-off';
+    clipboard.writeText('Report: pricing is $9-19/mo.');
+    const rep = captureFromClipboard(); // fake report via the hotkey path
+    await dom(`window.verqury.attachReport(${JSON.stringify(slug)}, ${JSON.stringify(task.id)}, ${JSON.stringify(rep.artifact.id)})`);
+    await wait(200);
+    const closed = api.getTask(root, slug, task.id);
+    result.taskClosed = closed.status === 'done' && closed.report === rep.artifact.id;
+    result.taskEchoedInTimeline = api.getProject(root, slug).timeline.some((e) => /Task done: Fetch pricing/.test(e.title || ''));
+    await dom("document.querySelector('.tab[data-mode=tasks]').click()");
+    await wait(200);
+    result.taskCards = await dom("document.querySelectorAll('#list .task-card').length");
+    await dom("document.querySelector('#list .task-card')?.click()");
+    await wait(150);
 
     const image = await win.webContents.capturePage();
     const png = image.toPNG();

@@ -7,7 +7,7 @@ memory, reusable guidance, captured artifacts, session bootstrapping, and task
 routing, from first concept through build, release, and marketing.
 
 - **Platform:** Linux x64 (X11) desktop — Node 20 + Electron shell, plain-JS renderer
-- **Status:** In development — pre-0.1 (Phases 0–5 of the [build plan](verqury-build-plan.md) complete: data layer, CLI, Electron shell with live project views, the guidance library, the artifact inbox with clipboard capture, and the session bootstrapper; see [CHANGELOG](CHANGELOG.md))
+- **Status:** In development — pre-0.1 (Phases 0–6 of the [build plan](verqury-build-plan.md) complete: data layer, CLI, Electron shell with live project views, the guidance library, the artifact inbox with clipboard capture, the session bootstrapper, and the task router; see [CHANGELOG](CHANGELOG.md))
 - **Publisher:** [FlawedWorks](https://flawedworks.com)
 
 > Verqury is a workflow layer, not an IDE — and deliberately not a chat interface,

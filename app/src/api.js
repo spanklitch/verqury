@@ -29,9 +29,18 @@ import {
   setActiveProject,
   listPackets,
   renderPacket as coreRenderPacket,
+  addTask,
+  listTasks,
+  showTask,
+  updateTask as coreUpdateTask,
+  deleteTask as coreDeleteTask,
+  renderHandoff as coreRenderHandoff,
+  attachReport as coreAttachReport,
   STAGES,
   GUIDANCE_KINDS,
   ARTIFACT_KINDS,
+  TASK_ROUTES,
+  TASK_STATUSES,
 } from 'verqury-core/files';
 
 const require = createRequire(import.meta.url);
@@ -125,6 +134,42 @@ export function getPackets(root) {
 
 export function renderPacket(root, packetSlug, projectSlug, opts) {
   return coreRenderPacket(root, packetSlug, projectSlug, opts ?? {});
+}
+
+export function getTaskRoutes() {
+  return TASK_ROUTES;
+}
+
+export function getTaskStatuses() {
+  return TASK_STATUSES;
+}
+
+export function getTasks(root, filters) {
+  return listTasks(root, filters ?? {});
+}
+
+export function getTask(root, projectSlug, id) {
+  return showTask(root, projectSlug, id);
+}
+
+export function createTask(root, projectSlug, payload) {
+  return addTask(root, projectSlug, payload);
+}
+
+export function updateTask(root, projectSlug, id, patch) {
+  return coreUpdateTask(root, projectSlug, id, patch);
+}
+
+export function deleteTask(root, projectSlug, id) {
+  return coreDeleteTask(root, projectSlug, id);
+}
+
+export function renderHandoff(root, projectSlug, id) {
+  return coreRenderHandoff(root, projectSlug, id);
+}
+
+export function attachReport(root, projectSlug, id, artifactId) {
+  return coreAttachReport(root, projectSlug, id, artifactId);
 }
 
 // The clipboard-capture path, shared by the global hotkey. `readClipboard` is

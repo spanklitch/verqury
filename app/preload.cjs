@@ -33,6 +33,16 @@ contextBridge.exposeInMainWorld('verqury', {
   renderPacket: (packetSlug, projectSlug, opts) => ipcRenderer.invoke('packet:render', packetSlug, projectSlug, opts),
   writePacket: (filePath, text) => ipcRenderer.invoke('packet:write', filePath, text),
 
+  taskRoutes: () => ipcRenderer.invoke('task:routes'),
+  taskStatuses: () => ipcRenderer.invoke('task:statuses'),
+  listTasks: (filters) => ipcRenderer.invoke('tasks:list', filters),
+  getTask: (projectSlug, id) => ipcRenderer.invoke('task:get', projectSlug, id),
+  addTask: (projectSlug, payload) => ipcRenderer.invoke('task:add', projectSlug, payload),
+  updateTask: (projectSlug, id, patch) => ipcRenderer.invoke('task:update', projectSlug, id, patch),
+  deleteTask: (projectSlug, id) => ipcRenderer.invoke('task:delete', projectSlug, id),
+  handoffTask: (projectSlug, id) => ipcRenderer.invoke('task:handoff', projectSlug, id),
+  attachReport: (projectSlug, id, artifactId) => ipcRenderer.invoke('task:attachReport', projectSlug, id, artifactId),
+
   onDataChanged: (cb) => ipcRenderer.on('data:changed', () => cb()),
   onArtifactCaptured: (cb) => ipcRenderer.on('artifact:captured', (_e, info) => cb(info)),
 });

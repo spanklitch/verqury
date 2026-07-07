@@ -13,6 +13,7 @@ import * as guidance from './guidance.js';
 import * as memory from './memory.js';
 import * as artifacts from './artifacts.js';
 import * as packets from './packets.js';
+import * as tasks from './tasks.js';
 import * as search from './search.js';
 
 const OPTIONS = {
@@ -32,6 +33,8 @@ const OPTIONS = {
   limit: { type: 'string' },
   out: { type: 'string' },
   log: { type: 'string' },
+  route: { type: 'string' },
+  surface: { type: 'string' },
   json: { type: 'boolean' },
   all: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
@@ -57,6 +60,11 @@ Usage: verqury <command> [args] [--data-root <dir>]
   active [<project>]                   Get or set the project new captures file into
   packet list
   packet render <packet> <project>     Render a bootstrap packet [--out file] [--log N]
+  task add <project> <title...>        [--route r] [--surface s] (or --body -)
+  task list [--project s] [--route r] [--status s]
+  task status <project> <id> <status>
+  task handoff <project> <id>          Print the hand-off payload
+  task report <project> <id> <artifactId>   Attach a report → done → log entry
   search <query...> [--project s] [--type project|guidance|decision|log|artifact] [--limit n] [--json]
   timeline <project>                   Log + decisions, newest first
   index rebuild | refresh
@@ -305,6 +313,54 @@ function main() {
         return;
       }
       return fail(`unknown packet subcommand: ${sub ?? '(none)'}`);
+    }
+
+    case 'task': {
+      if (sub === 'add') {
+        const project = positionals[2];
+        if (!project) fail('task add needs a <project>');
+        const title = positionals.slice(3).join(' ');
+        if (!title) fail('task add needs a <title>');
+        const t = tasks.addTask(root, project, {
+          title,
+          route: values.route ?? 'direct',
+          surface: values.surface ?? null,
+          body: bodyFrom(values),
+        });
+        afterMutation();
+        console.log(`Task ${t.id} (${t.route}) → ${project}`);
+        return;
+      }
+      if (sub === 'list') {
+        const list = tasks.listTasks(root, { project: values.project, route: values.route, status: values.status });
+        if (values.json) return void console.log(JSON.stringify(list));
+        if (!list.length) return console.log('(no tasks)');
+        for (const t of list) console.log(`${t.status}\t${t.route}\t${t.project}\t${t.title}`);
+        return;
+      }
+      if (sub === 'status') {
+        const [, , project, id, status] = positionals;
+        if (!project || !id || !status) fail('task status needs <project> <id> <status>');
+        tasks.updateTask(root, project, id, { status });
+        afterMutation();
+        console.log(`${id} → ${status}`);
+        return;
+      }
+      if (sub === 'handoff') {
+        const [, , project, id] = positionals;
+        if (!project || !id) fail('task handoff needs <project> <id>');
+        process.stdout.write(tasks.renderHandoff(root, project, id).payload);
+        return;
+      }
+      if (sub === 'report') {
+        const [, , project, id, artifactId] = positionals;
+        if (!project || !id || !artifactId) fail('task report needs <project> <id> <artifactId>');
+        tasks.attachReport(root, project, id, artifactId);
+        afterMutation();
+        console.log(`Task ${id} done; report ${artifactId} logged`);
+        return;
+      }
+      return fail(`unknown task subcommand: ${sub ?? '(none)'}`);
     }
 
     case 'timeline': {

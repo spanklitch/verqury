@@ -12,7 +12,7 @@ verify success criteria, update this file.
 - [x] **Phase 3 — Guidance library** (2026-07-07)
 - [x] **Phase 4 — Artifact inbox + clipboard capture** (2026-07-07)
 - [x] **Phase 5 — Session bootstrapper** (2026-07-07)
-- [ ] **Phase 6 — Task router**
+- [x] **Phase 6 — Task router** (2026-07-07)
 - [ ] **Phase 7 — Adapter registry + launch**
 - [ ] **Phase 8 — Packaging, docs, release prep**
 
@@ -235,3 +235,37 @@ launching (that's Phase 7 adapters).
 lanes (direct/automation/browser-agent/human); hand-off renders a packet payload →
 clipboard → status; attach-report links an inbox artifact → done → auto-append a log entry.
 ULID reused for task ids. Ties packets (Phase 5) + artifacts (Phase 4) into a loop.
+
+### 2026-07-07 — Phase 6 (session 7, Opus)
+**Shipped:** Task router — the loop that ties packets (P5) + artifacts (P4) together. Core
+`tasks.js`: per-project tasks (ULID ids), CRUD, `renderHandoff` (prepends the surface's
+packet context to the task payload), `attachReport` (links artifact → status done → auto-
+appends a memory/log entry, closing back into the timeline). TASK_ROUTES/TASK_STATUSES
+enums. Tasks indexed for search. `task add|list|status|handoff|report` CLI. App: Tasks tab
+with route-laned task list, detail with status/route dropdowns, Hand-off (payload→clipboard
+→handed-off), Attach-report (project-artifact picker → done), new-task form. `task:*` IPC.
+
+**Verified:**
+- 44 tests green (32 core incl. 4 task cases: route validation, CRUD, handoff-with-packet-
+  context, attachReport→timeline echo; 12 app). Lint clean.
+- VERQURY_VERIFY harness — the full done-when loop in the running app:
+  **taskHandoffClipboard=true** (payload on clipboard), **taskHandedOff=true**,
+  **taskClosed=true** (attach report → done + report linked), **taskEchoedInTimeline=true**
+  (completion appears in project timeline), **taskCards=1** (route lane renders). All Phase
+  2–5 checks still pass. Screenshot confirms Tasks UI (done badge, linked report, payload).
+  CLI loop verified independently too.
+
+**Deviations:** "board with route lanes" implemented as route-grouped sections in the
+sidebar (like guidance-by-scope) + detail pane, not a horizontal kanban — fits the app's
+2-pane layout and is more usable in a solo tool. Hand-off enriches the task payload with
+the surface's matching packet (wires P5 into P6) — reasonable reading of "render the
+handoff payload via the surface's packet template".
+
+**Not done (deliberate):** surface field is free-selected from packet surfaces; actual
+launching of a surface is Phase 7 (adapters). No task due-dates/priority (not in scope).
+
+**Next session:** Phase 7 — Adapter registry + launch (plan §5 Phase 7): config.json
+adapters {slug,label,launch command,packet template,notes}; settings UI to add/edit;
+per-project launch buttons (spawn detached, e.g. xfce4-terminal at repo running the agent);
+starter adapters (claude-code/claude-chat/cursor/browser-agent). Adding an adapter must
+need ZERO code changes. This connects task.surface + packet.surface to real launches.

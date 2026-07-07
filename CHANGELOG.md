@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   copies it to the clipboard or writes it to the project repo. Ships three starter
   packets (chat-ideation, terminal-build, browser-task). New `verqury packet
   list|render` CLI.
+- Task router: a Tasks tab with route-laned task lists (direct / automation /
+  browser-agent / human). Hand-off renders the task's payload — enriched with the
+  surface's packet context — to the clipboard and marks it handed-off. Attach-report
+  links a captured inbox artifact, marks the task done, and echoes a completion entry
+  into the project's memory timeline. Core gains a `tasks` module and `verqury task
+  add|list|status|handoff|report` CLI.
 
 ### Changed
 - Renamed product Velora → **Verqury** (prior name in use by another company);

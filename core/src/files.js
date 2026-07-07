@@ -10,6 +10,7 @@ export * from './guidance.js';
 export * from './memory.js';
 export * from './artifacts.js';
 export * from './packets.js';
+export * from './tasks.js';
 export * from './schema.js';
 export { ulid } from './ids.js';
 export { slugify } from './slug.js';

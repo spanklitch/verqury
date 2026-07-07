@@ -44,6 +44,7 @@ export function collectDocuments(root) {
       for (const f of listMd(p.guidance)) push(f, 'guidance', d.name);
       for (const f of listMd(p.decisions)) push(f, 'decision', d.name);
       for (const f of listMd(p.log)) push(f, 'log', d.name);
+      for (const f of listMd(p.tasks)) push(f, 'task', d.name);
       // Artifacts nest one level deeper (artifacts/YYYY-MM/<ulid>.md).
       if (fs.existsSync(p.artifacts)) {
         for (const month of fs.readdirSync(p.artifacts)) {

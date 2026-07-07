@@ -9,6 +9,8 @@ export const GUIDANCE_KINDS = ['skill', 'standard', 'instruction', 'template'];
 export const DECISION_STATUSES = ['proposed', 'accepted', 'superseded'];
 export const ARTIFACT_KINDS = ['prompt', 'command', 'snippet', 'report', 'note', 'url'];
 export const ARTIFACT_SOURCES = ['clipboard', 'manual', 'report'];
+export const TASK_ROUTES = ['direct', 'automation', 'browser-agent', 'human'];
+export const TASK_STATUSES = ['todo', 'handed-off', 'in-progress', 'done', 'dropped'];
 
 export function assertEnum(value, allowed, label) {
   if (!allowed.includes(value)) {

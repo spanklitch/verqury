@@ -71,3 +71,12 @@ substitution + tiny in-house globber, renderPacket, 3 starters seeded by init. p
 list|render CLI. App: ⚡ Bootstrap panel in project detail (packet dropdown, live preview,
 copy / write-to-repo). 40 tests green; harness proves packetHasContext/packetFileWritten/
 packetClipboard/bootstrapPreview. Fixed a null-text-node bug (replaceChildren with null).
+
+### 2026-07-07 — Phase 6
+Task router (ties P4 artifacts + P5 packets into a loop). Core tasks.js: per-project tasks
+(ULID), CRUD, renderHandoff (prepends surface's packet context), attachReport (artifact →
+done → auto-log echo into timeline). TASK_ROUTES/STATUSES, task indexing, task CLI. App:
+Tasks tab, route-laned list, detail with status/route + Hand-off (payload→clipboard) +
+Attach-report (artifact picker → done). 44 tests green; harness proves the full done-when
+loop (taskHandoffClipboard/taskHandedOff/taskClosed/taskEchoedInTimeline/taskCards). Board
+= route-grouped sidebar sections (not horizontal kanban) — fits 2-pane layout.

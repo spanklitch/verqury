@@ -250,7 +250,22 @@ body {
   font-size: 12.5px;
 }
 .tag-edit { display: flex; gap: 6px; }
-.tag-edit input { flex: 1; }
+.tag-edit input, .tag-edit select { flex: 1; }
+
+/* Tasks */
+.task-card { padding: 9px 11px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+.task-card:hover { background: var(--panel-2); }
+.task-card.active { background: var(--panel-2); border-color: var(--line); }
+.task-card .name { font-weight: 550; }
+.badge.status-todo { background: var(--panel-2); }
+.badge.status-handed-off { background: color-mix(in srgb, #d0a536 22%, transparent); color: #a5791c; border-color: transparent; }
+.badge.status-in-progress { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); border-color: transparent; }
+.badge.status-done { background: color-mix(in srgb, #36b37e 22%, transparent); color: #1f8f5f; border-color: transparent; }
+.badge.status-dropped { background: var(--panel-2); color: var(--ink-soft); text-decoration: line-through; }
+@media (prefers-color-scheme: dark) {
+  .badge.status-handed-off { color: #e0bd6a; }
+  .badge.status-done { color: #6fd3a6; }
+}
 
 /* Toast */
 .toast {
