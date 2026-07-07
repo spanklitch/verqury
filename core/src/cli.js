@@ -12,6 +12,7 @@ import * as projects from './projects.js';
 import * as guidance from './guidance.js';
 import * as memory from './memory.js';
 import * as artifacts from './artifacts.js';
+import * as packets from './packets.js';
 import * as search from './search.js';
 
 const OPTIONS = {
@@ -29,6 +30,8 @@ const OPTIONS = {
   project: { type: 'string' },
   type: { type: 'string' },
   limit: { type: 'string' },
+  out: { type: 'string' },
+  log: { type: 'string' },
   json: { type: 'boolean' },
   all: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
@@ -52,6 +55,8 @@ Usage: verqury <command> [args] [--data-root <dir>]
   artifact add <project> <content...>  [--kind k] [--tag t] [--title t] (or --body -)
   artifact list [--project s] [--kind k] [--json]
   active [<project>]                   Get or set the project new captures file into
+  packet list
+  packet render <packet> <project>     Render a bootstrap packet [--out file] [--log N]
   search <query...> [--project s] [--type project|guidance|decision|log|artifact] [--limit n] [--json]
   timeline <project>                   Log + decisions, newest first
   index rebuild | refresh
@@ -277,6 +282,29 @@ function main() {
       setActiveProject(root, slug);
       console.log(`Active project: ${slug}`);
       return;
+    }
+
+    case 'packet': {
+      if (sub === 'list') {
+        const list = packets.listPackets(root);
+        if (!list.length) return console.log('(no packets)');
+        for (const p of list) console.log(`${p.slug}\t${p.surface ?? '—'}\t${p.title}`);
+        return;
+      }
+      if (sub === 'render') {
+        const [, , packetSlug, projectSlug] = positionals;
+        if (!packetSlug || !projectSlug) fail('packet render needs <packet> <project>');
+        const opts = values.log ? { logN: Number(values.log) } : {};
+        const rendered = packets.renderPacket(root, packetSlug, projectSlug, opts);
+        if (values.out) {
+          fs.writeFileSync(values.out, rendered.text);
+          console.log(`Wrote ${values.out}`);
+        } else {
+          process.stdout.write(rendered.text);
+        }
+        return;
+      }
+      return fail(`unknown packet subcommand: ${sub ?? '(none)'}`);
     }
 
     case 'timeline': {

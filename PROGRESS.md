@@ -11,7 +11,7 @@ verify success criteria, update this file.
 - [x] **Phase 2 — Electron shell + project views** (2026-07-07)
 - [x] **Phase 3 — Guidance library** (2026-07-07)
 - [x] **Phase 4 — Artifact inbox + clipboard capture** (2026-07-07)
-- [ ] **Phase 5 — Session bootstrapper**
+- [x] **Phase 5 — Session bootstrapper** (2026-07-07)
 - [ ] **Phase 6 — Task router**
 - [ ] **Phase 7 — Adapter registry + launch**
 - [ ] **Phase 8 — Packaging, docs, release prep**
@@ -200,3 +200,38 @@ promotion yet (that's Phase 6's attach-report loop).
 **Next session:** Phase 5 — Session bootstrapper (plan §5 Phase 5): packet templates with
 `{{include}}` globs + `{{project.*}}` vars; render to clipboard / write to a repo file;
 ship chat-ideation / terminal-build / browser-task starter packets. `verqury packet render`.
+
+### 2026-07-07 — Phase 5 (session 6, Opus)
+**Shipped:** Session bootstrapper. Core `packets.js`: global packet templates at
+`<root>/packets/` ([[ADR-0007]] — deviates from §3's per-project sketch; reusable +
+`{{project.*}}`-parameterized), a small `{{…}}` substitution engine (`{{project.*}}`,
+`{{includes}}` guidance-glob expansion with a tiny in-house globber, `{{log:N}}` recent
+entries), `renderPacket`, add/list/show, and 3 starter packets seeded by `init`
+(chat-ideation, terminal-build, browser-task). Packets indexed for search. `packet
+list|render` CLI (`--out`, `--log`). App: a ⚡ Bootstrap button in project detail opens a
+panel — packet dropdown, live preview, Copy-to-clipboard, and Write-to-<output> (writes a
+context file into the project repo). New `packet:list|render|write` IPC.
+
+**Verified:**
+- 40 tests green (28 core incl. 4 packet cases: starters seeded, render expands
+  vars/includes/log, `log:N` limit, unknown-marker passthrough; 12 app). Lint clean.
+- VERQURY_VERIFY harness: **packetHasContext=true** (rendered terminal-build has narrative
+  + guidance + log — done-when), **packetFileWritten=true** (written to a file via the
+  write IPC, contains guidance — done-when "produces a file"), **packetClipboard=true**
+  (clipboard round-trip — done-when "clipboard path verified"), **bootstrapPreview=true**
+  (UI panel live-previews terminal-build). All Phase 2–4 checks still pass. Screenshot
+  confirms the Bootstrap panel. CLI render verified too.
+- Fixed a real bug found via the screenshot: a stray "null" text node in the bootstrap
+  actions when a packet had no output (passing null to replaceChildren) — now filtered.
+
+**Deviations:** packets are GLOBAL (ADR-0007), not per-project as §3 sketched — required
+by the reusable-template + pick-project-then-packet semantics.
+
+**Not done (deliberate):** no packet editing UI (starters + CLI `packet` cover authoring;
+free-form template editing would be editor-ish). Surface field is set but not yet wired to
+launching (that's Phase 7 adapters).
+
+**Next session:** Phase 6 — Task router (plan §5 Phase 6): task CRUD + board UI with route
+lanes (direct/automation/browser-agent/human); hand-off renders a packet payload →
+clipboard → status; attach-report links an inbox artifact → done → auto-append a log entry.
+ULID reused for task ids. Ties packets (Phase 5) + artifacts (Phase 4) into a loop.

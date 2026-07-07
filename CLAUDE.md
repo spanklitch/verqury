@@ -63,3 +63,11 @@ injectable (api.captureClipboard) → unit-tested sans Electron. Artifact bodies
 VERBATIM (not fenced) for exact copy-back. 36 tests green; harness proves hotkeyRegistered
 / captureFiledArtifact / captureRoundTrips / inboxCards. X11 hotkey/clipboard gotchas in
 engineering-notes §3.
+
+### 2026-07-07 — Phase 5
+Session bootstrapper. Core packets.js: GLOBAL packet templates at <root>/packets/
+(ADR-0007, deviates from §3 per-project sketch), {{project.*}}/{{includes}}/{{log:N}}
+substitution + tiny in-house globber, renderPacket, 3 starters seeded by init. packet
+list|render CLI. App: ⚡ Bootstrap panel in project detail (packet dropdown, live preview,
+copy / write-to-repo). 40 tests green; harness proves packetHasContext/packetFileWritten/
+packetClipboard/bootstrapPreview. Fixed a null-text-node bug (replaceChildren with null).

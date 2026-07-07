@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { indexPath, projectsDir, globalGuidanceDir, projectPaths } from './paths.js';
+import { indexPath, projectsDir, globalGuidanceDir, projectPaths, packetsDir } from './paths.js';
 import { readDoc } from './frontmatter.js';
 
 function listMd(dir) {
@@ -33,6 +33,7 @@ export function collectDocuments(root) {
   };
 
   for (const f of listMd(globalGuidanceDir(root))) push(f, 'guidance', '');
+  for (const f of listMd(packetsDir(root))) push(f, 'packet', '');
 
   const pdir = projectsDir(root);
   if (fs.existsSync(pdir)) {

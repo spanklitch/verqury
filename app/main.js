@@ -63,6 +63,13 @@ function setupIpc() {
   ipcMain.handle('project:getActive', () => api.getActive(root));
   ipcMain.handle('project:setActive', (_e, slug) => api.setActive(root, slug));
   ipcMain.handle('capture:now', () => captureFromClipboard()); // manual trigger (UI button / verify)
+
+  ipcMain.handle('packet:list', () => api.getPackets(root));
+  ipcMain.handle('packet:render', (_e, packetSlug, projectSlug, opts) => api.renderPacket(root, packetSlug, projectSlug, opts));
+  ipcMain.handle('packet:write', (_e, filePath, text) => {
+    fs.writeFileSync(filePath, String(text ?? ''));
+    return filePath;
+  });
 }
 
 function notify(body) {
@@ -186,6 +193,28 @@ async function runVerify(outDir) {
     result.inboxCards = await dom("document.querySelectorAll('#list .artifact-card').length");
     await dom("document.querySelector('#list .artifact-card')?.click()");
     await wait(150);
+
+    // (7) session bootstrapper: render terminal-build → narrative + guidance + log.
+    const rp = api.renderPacket(root, 'terminal-build', slug, {});
+    result.packetHasContext = /build context/.test(rp.text) && /Security Baseline/.test(rp.text) && /Build 93/.test(rp.text);
+    const target = path.join(outDir, 'CONTEXT.md');
+    await dom(`(async () => { const r = await window.verqury.renderPacket('terminal-build', ${JSON.stringify(slug)}, {}); await window.verqury.writePacket(${JSON.stringify(target)}, r.text); })()`);
+    await wait(200);
+    result.packetFileWritten = fs.existsSync(target) && /Security Baseline/.test(fs.readFileSync(target, 'utf8'));
+    await dom(`(async () => { const r = await window.verqury.renderPacket('terminal-build', ${JSON.stringify(slug)}, {}); await window.verqury.copyToClipboard(r.text); })()`);
+    await wait(150);
+    result.packetClipboard = clipboard.readText() === rp.text;
+    // Bootstrap panel in the UI shows a live preview.
+    await dom("document.querySelector('.tab[data-mode=projects]').click()");
+    await wait(150);
+    await dom("document.querySelector('#list .project-card')?.click()");
+    await wait(150);
+    await dom("[...document.querySelectorAll('.head-actions button')].find((b) => b.textContent.includes('Bootstrap'))?.click()");
+    await wait(300);
+    // Select terminal-build in the packet dropdown, then check the live preview.
+    await dom("(() => { const s = document.querySelector('.head-actions select'); if (s) { s.value = 'terminal-build'; s.dispatchEvent(new Event('change')); } })()");
+    await wait(300);
+    result.bootstrapPreview = await dom("(document.querySelector('.artifact-body')?.textContent || '').includes('build context')");
 
     const image = await win.webContents.capturePage();
     const png = image.toPNG();

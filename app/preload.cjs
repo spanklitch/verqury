@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('verqury', {
   setActiveProject: (slug) => ipcRenderer.invoke('project:setActive', slug),
   captureNow: () => ipcRenderer.invoke('capture:now'),
 
+  listPackets: () => ipcRenderer.invoke('packet:list'),
+  renderPacket: (packetSlug, projectSlug, opts) => ipcRenderer.invoke('packet:render', packetSlug, projectSlug, opts),
+  writePacket: (filePath, text) => ipcRenderer.invoke('packet:write', filePath, text),
+
   onDataChanged: (cb) => ipcRenderer.on('data:changed', () => cb()),
   onArtifactCaptured: (cb) => ipcRenderer.on('artifact:captured', (_e, info) => cb(info)),
 });

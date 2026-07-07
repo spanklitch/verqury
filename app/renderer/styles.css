@@ -109,7 +109,6 @@ body {
 .detail-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .detail-title { font-size: 22px; font-weight: 680; margin: 0; }
 .stage-select {
-  margin-left: auto;
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -117,6 +116,7 @@ body {
   color: var(--ink);
 }
 .detail-sub { color: var(--ink-soft); margin: 4px 0 20px; }
+.head-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .detail-sub a { color: var(--accent); }
 
 .narrative {

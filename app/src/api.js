@@ -27,6 +27,8 @@ import {
   setArtifactKind,
   getActiveProject,
   setActiveProject,
+  listPackets,
+  renderPacket as coreRenderPacket,
   STAGES,
   GUIDANCE_KINDS,
   ARTIFACT_KINDS,
@@ -115,6 +117,14 @@ export function getActive(root) {
 
 export function setActive(root, slug) {
   return setActiveProject(root, slug);
+}
+
+export function getPackets(root) {
+  return listPackets(root);
+}
+
+export function renderPacket(root, packetSlug, projectSlug, opts) {
+  return coreRenderPacket(root, packetSlug, projectSlug, opts ?? {});
 }
 
 // The clipboard-capture path, shared by the global hotkey. `readClipboard` is

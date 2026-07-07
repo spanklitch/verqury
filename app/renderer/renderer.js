@@ -261,10 +261,47 @@ function renderProjectDetail(project, timeline) {
     );
   }
 
+  const bootstrapBtn = h('button', { class: 'btn', onclick: () => showBootstrap(project.slug) }, '⚡ Bootstrap');
   detailEl.replaceChildren(
-    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: project.name }), select),
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: project.name }), h('div', { class: 'head-actions' }, bootstrapBtn, select)),
     sub, narrative, timelineEl,
   );
+}
+
+// Session bootstrapper: pick a packet, preview it rendered for this project,
+// then copy to clipboard or write to the packet's output file.
+async function showBootstrap(projectSlug) {
+  const { project } = await window.verqury.getProject(projectSlug);
+  const list = await window.verqury.listPackets();
+  const sel = h('select', { onchange: () => renderPreview() });
+  for (const p of list) sel.append(h('option', { value: p.slug, text: `${p.title} · ${p.surface ?? '—'}` }));
+
+  const preview = h('pre', { class: 'artifact-body' });
+  const actions = h('div', { class: 'detail-actions' });
+
+  async function renderPreview() {
+    if (!sel.value) return;
+    const r = await window.verqury.renderPacket(sel.value, projectSlug, {});
+    preview.textContent = r.text;
+    const buttons = [
+      h('button', { class: 'btn primary', onclick: () => { window.verqury.copyToClipboard(r.text); toast('Copied to clipboard'); } }, 'Copy to clipboard'),
+    ];
+    if (r.output) {
+      buttons.push(h('button', { class: 'btn', onclick: async () => {
+        try { await window.verqury.writePacket(r.output, r.text); toast(`Wrote ${r.output}`); }
+        catch (err) { toast(err.message); }
+      } }, `Write ${r.output}`));
+    }
+    buttons.push(h('button', { class: 'btn', onclick: () => selectProject(projectSlug) }, 'Back'));
+    actions.replaceChildren(...buttons);
+  }
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: `Bootstrap · ${project.name}` }), h('div', { class: 'head-actions' }, sel)),
+    h('div', { class: 'detail-sub', text: 'Assemble a context packet for a work surface, then copy it or write it to the project repo.' }),
+    actions, preview,
+  );
+  await renderPreview();
 }
 
 function renderGuidanceDetail(g) {

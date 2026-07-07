@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an active-project selector. Core gains an `artifacts` module, an in-house ULID
   generator, `activeProject` config, artifact indexing, and `artifact` / `active`
   CLI commands.
+- Session bootstrapper: global packet templates ([ADR-0007](docs/adr/0007-packets-are-global-templates.md))
+  render against a chosen project — `{{project.*}}` vars, `{{includes}}` guidance
+  globs, and `{{log:N}}` recent entries. A Bootstrap panel previews a packet and
+  copies it to the clipboard or writes it to the project repo. Ships three starter
+  packets (chat-ideation, terminal-build, browser-task). New `verqury packet
+  list|render` CLI.
 
 ### Changed
 - Renamed product Velora → **Verqury** (prior name in use by another company);

@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { projectsDir, globalGuidanceDir, configPath } from './paths.js';
 import { defaultConfig, writeConfig } from './config.js';
+import { ensureStarterPackets } from './packets.js';
 
 export function init(root) {
   fs.mkdirSync(projectsDir(root), { recursive: true });
@@ -9,5 +10,6 @@ export function init(root) {
   if (!fs.existsSync(configPath(root))) {
     writeConfig(root, defaultConfig());
   }
+  ensureStarterPackets(root);
   return root;
 }

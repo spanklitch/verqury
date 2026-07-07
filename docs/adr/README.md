@@ -18,3 +18,4 @@ New records start from [`0000-template.md`](0000-template.md) and take the next 
 | [0004](0004-adapters-are-launch-handoff-config.md) | Adapters are launch/handoff config, not API integrations | Accepted |
 | [0005](0005-vanilla-frontend.md) | Vanilla-leaning frontend, no framework | Accepted |
 | [0006](0006-search-runs-out-of-process.md) | Search runs out-of-process; Electron never loads better-sqlite3 | Accepted |
+| [0007](0007-packets-are-global-templates.md) | Packets are global reusable templates, not per-project files | Accepted |

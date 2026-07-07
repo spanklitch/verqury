@@ -26,6 +26,10 @@ export function projectsDir(root) {
   return path.join(root, 'projects');
 }
 
+export function packetsDir(root) {
+  return path.join(root, 'packets');
+}
+
 // All paths inside a single project's directory.
 export function projectPaths(root, slug) {
   const base = path.join(projectsDir(root), slug);
