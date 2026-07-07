@@ -10,7 +10,7 @@ verify success criteria, update this file.
 - [x] **Phase 1 — verqury-core: data layer + CLI** (2026-07-07)
 - [x] **Phase 2 — Electron shell + project views** (2026-07-07)
 - [x] **Phase 3 — Guidance library** (2026-07-07)
-- [ ] **Phase 4 — Artifact inbox + clipboard capture**
+- [x] **Phase 4 — Artifact inbox + clipboard capture** (2026-07-07)
 - [ ] **Phase 5 — Session bootstrapper**
 - [ ] **Phase 6 — Task router**
 - [ ] **Phase 7 — Adapter registry + launch**
@@ -167,3 +167,36 @@ edge cases (tables, nested lists) not handled — add only if a guidance file ne
 riskiest OS integration). Global hotkey Ctrl+Alt+C → capture clipboard into the active
 project's artifacts; kind auto-guess; inbox view. ULID generation lands here (deferred
 from Phase 1). Clipboard READ needed (Phase 3 added clipboard write via the bridge).
+
+### 2026-07-07 — Phase 4 (session 5, Opus)
+**Shipped:** Artifact inbox + clipboard capture. Core: `artifacts.js` (add/list/show/
+delete/retag/setKind + `guessKind` classifier), `ids.js` (in-house ULID — deferred here
+from Phase 1), ARTIFACT_KINDS/SOURCES, `activeProject` config get/set, artifact indexing
+in search, `artifact add|list` + `active` CLI. App: global `Control+Alt+C` hotkey reads
+clipboard → files an artifact into the active project + system notification; Inbox tab
+(capture-to selector, Ctrl+Alt+C button, kind filter, artifact cards; detail with kind
+dropdown, editable tags, copy-back, delete). Capture logic is `api.captureClipboard(root,
+readClipboard)` with the clipboard read INJECTED → unit-tested without Electron.
+
+**Verified:**
+- 36 tests green (24 core incl. ulid/guessKind/artifact lifecycle; 12 app incl. 3 capture-
+  path cases). Lint clean.
+- VERQURY_VERIFY harness (extended): **hotkeyRegistered=true**, **captureFiledArtifact=true**
+  (clipboard→artifact file on disk in active project), **captureRoundTrips=true** (stored
+  body === captured text), **inboxCards=1** (appears in inbox). All Phase 2/3 checks still
+  pass. Screenshot confirms inbox UI (classifier tagged `git rebase…` as command; verbatim
+  body, kind/tags editors, copy-back/delete). CLI confirms captured artifacts are FTS-findable.
+
+**Deviations:** artifact bodies stored VERBATIM (not "fenced if code" as plan said) so
+copy-back round-trips exactly and files stay clean for agents — kind frontmatter carries
+the signal (engineering-notes §3). No separate quick-capture popup window — capture is
+immediate + notification, and kind/tags are editable in the inbox detail (satisfies
+"editable in a dialog"; a 2nd window was unneeded scope on the riskiest phase). Hotkey
+verified via registration + handler (harness can't synthesize an OS key event).
+
+**Not done (deliberate):** Wayland global-shortcut (X11 only, ADR-0003). No artifact→task
+promotion yet (that's Phase 6's attach-report loop).
+
+**Next session:** Phase 5 — Session bootstrapper (plan §5 Phase 5): packet templates with
+`{{include}}` globs + `{{project.*}}` vars; render to clipboard / write to a repo file;
+ship chat-ideation / terminal-build / browser-task starter packets. `verqury packet render`.

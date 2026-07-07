@@ -1,7 +1,7 @@
 // Electron main: the thin shell around verqury-core (ADR-0002, ADR-0003).
 // All real logic lives in ./src/api.js and ./src/watcher.js so it stays testable
 // without launching Electron. This file only wires: window, tray, IPC, watcher.
-import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, clipboard, shell } from 'electron';
+import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, clipboard, shell, globalShortcut, Notification } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,6 +53,44 @@ function setupIpc() {
   ipcMain.handle('shell:openExternal', (_e, url) => {
     if (/^https?:\/\//.test(String(url))) shell.openExternal(url);
   });
+
+  ipcMain.handle('artifact:kinds', () => api.getArtifactKinds());
+  ipcMain.handle('artifacts:list', (_e, filters) => api.getArtifacts(root, filters));
+  ipcMain.handle('artifact:get', (_e, projectSlug, id) => api.getArtifact(root, projectSlug, id));
+  ipcMain.handle('artifact:delete', (_e, projectSlug, id) => api.deleteArtifact(root, projectSlug, id));
+  ipcMain.handle('artifact:retag', (_e, projectSlug, id, tags) => api.tagArtifact(root, projectSlug, id, tags));
+  ipcMain.handle('artifact:setKind', (_e, projectSlug, id, kind) => api.changeArtifactKind(root, projectSlug, id, kind));
+  ipcMain.handle('project:getActive', () => api.getActive(root));
+  ipcMain.handle('project:setActive', (_e, slug) => api.setActive(root, slug));
+  ipcMain.handle('capture:now', () => captureFromClipboard()); // manual trigger (UI button / verify)
+}
+
+function notify(body) {
+  try {
+    new Notification({ title: 'Verqury', body, silent: true }).show();
+  } catch {
+    // libnotify may be absent on some Linux setups — capture still succeeds.
+  }
+}
+
+// The clipboard-capture path shared by the global hotkey and the UI button.
+function captureFromClipboard() {
+  const outcome = api.captureClipboard(root, () => clipboard.readText());
+  if (!outcome.ok) {
+    notify(outcome.reason === 'empty' ? 'Clipboard empty — nothing captured' : 'Create a project first to capture');
+    return outcome;
+  }
+  api.refreshIndex(root);
+  if (win && !win.isDestroyed()) win.webContents.send('artifact:captured', { project: outcome.project, id: outcome.artifact.id });
+  notify(`Captured ${outcome.artifact.kind} → ${outcome.project}`);
+  return outcome;
+}
+
+function setupHotkey() {
+  const accel = 'Control+Alt+C';
+  if (!globalShortcut.register(accel, captureFromClipboard)) {
+    console.warn(`Could not register global hotkey ${accel} (already in use?)`);
+  }
 }
 
 function setupWatcher() {
@@ -132,6 +170,23 @@ async function runVerify(outDir) {
     result.guidancePromoted =
       fs.existsSync(path.join(root, 'guidance', 'harness-instruction.md')) && !fs.existsSync(created);
 
+    // (6) clipboard capture: hotkey registered, and the capture path files an
+    // artifact into the active project that appears in the inbox and round-trips.
+    result.hotkeyRegistered = globalShortcut.isRegistered('Control+Alt+C');
+    api.setActive(root, slug);
+    const captured = 'git rebase -i HEAD~3 # captured by harness';
+    clipboard.writeText(captured);
+    captureFromClipboard(); // same path the hotkey invokes
+    await wait(300);
+    const arts = api.getArtifacts(root, { project: slug });
+    result.captureFiledArtifact = arts.length === 1 && fs.existsSync(arts[0].path);
+    result.captureRoundTrips = arts.length === 1 && api.getArtifact(root, slug, arts[0].id).body.trim() === captured;
+    await dom("document.querySelector('.tab[data-mode=inbox]').click()");
+    await wait(200);
+    result.inboxCards = await dom("document.querySelectorAll('#list .artifact-card').length");
+    await dom("document.querySelector('#list .artifact-card')?.click()");
+    await wait(150);
+
     const image = await win.webContents.capturePage();
     const png = image.toPNG();
     if (png.length) fs.writeFileSync(path.join(outDir, 'shot.png'), png);
@@ -148,6 +203,7 @@ app.whenReady().then(() => {
   createWindow();
   setupWatcher();
   setupTray();
+  setupHotkey();
 
   const verifyDir = process.env.VERQURY_VERIFY;
   if (verifyDir) win.webContents.once('did-finish-load', () => setTimeout(() => runVerify(verifyDir), 800));
@@ -162,4 +218,5 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin' && !tray) app.quit();
 });
 
+app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('before-quit', () => watcher?.close());

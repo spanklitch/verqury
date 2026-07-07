@@ -53,3 +53,13 @@ HTML-escaped; ADR-0005) — also upgrades narrative. Clipboard/external-links vi
 bridge. Renderer is now an ES module. 29 tests green; all done-when proven via harness
 (markdownRendered / guidanceCreated / guidancePromoted true) + FTS-findable. Details in
 PROGRESS.md; renderer notes in engineering-notes §3.
+
+### 2026-07-07 — Phase 4
+Artifact inbox + clipboard capture. Core: artifacts.js (CRUD + guessKind), ids.js (ULID,
+deferred from P1), activeProject config, artifact indexing, artifact/active CLI. App:
+global Control+Alt+C → clipboard→artifact into active project + notification; Inbox tab
+(capture-to selector, kind filter, copy-back/retag/change-kind/delete). Capture logic
+injectable (api.captureClipboard) → unit-tested sans Electron. Artifact bodies stored
+VERBATIM (not fenced) for exact copy-back. 36 tests green; harness proves hotkeyRegistered
+/ captureFiledArtifact / captureRoundTrips / inboxCards. X11 hotkey/clipboard gotchas in
+engineering-notes §3.

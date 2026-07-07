@@ -18,7 +18,8 @@ export function collectDocuments(root) {
   const docs = [];
   const push = (file, type, project) => {
     const { data, body } = readDoc(file);
-    const title = data.title ?? data.name ?? path.basename(file, '.md');
+    // Artifacts are usually untitled; fall back to their kind rather than the ulid.
+    const title = data.title ?? data.name ?? (type === 'artifact' ? data.kind ?? 'artifact' : path.basename(file, '.md'));
     const tags = Array.isArray(data.tags) ? data.tags.join(' ') : '';
     docs.push({
       path: file,
@@ -42,6 +43,13 @@ export function collectDocuments(root) {
       for (const f of listMd(p.guidance)) push(f, 'guidance', d.name);
       for (const f of listMd(p.decisions)) push(f, 'decision', d.name);
       for (const f of listMd(p.log)) push(f, 'log', d.name);
+      // Artifacts nest one level deeper (artifacts/YYYY-MM/<ulid>.md).
+      if (fs.existsSync(p.artifacts)) {
+        for (const month of fs.readdirSync(p.artifacts)) {
+          const mdir = path.join(p.artifacts, month);
+          if (fs.statSync(mdir).isDirectory()) for (const f of listMd(mdir)) push(f, 'artifact', d.name);
+        }
+      }
     }
   }
   return docs;

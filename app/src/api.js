@@ -19,8 +19,17 @@ import {
   listAllGuidance,
   showGuidance,
   promoteGuidance as corePromoteGuidance,
+  addArtifact,
+  listArtifacts,
+  showArtifact,
+  deleteArtifact as coreDeleteArtifact,
+  retagArtifact,
+  setArtifactKind,
+  getActiveProject,
+  setActiveProject,
   STAGES,
   GUIDANCE_KINDS,
+  ARTIFACT_KINDS,
 } from 'verqury-core/files';
 
 const require = createRequire(import.meta.url);
@@ -70,6 +79,53 @@ export function createGuidance(root, payload) {
 
 export function promoteGuidance(root, projectSlug, slug) {
   return corePromoteGuidance(root, projectSlug, slug);
+}
+
+export function getArtifactKinds() {
+  return ARTIFACT_KINDS;
+}
+
+export function getArtifacts(root, filters) {
+  return listArtifacts(root, filters ?? {});
+}
+
+export function getArtifact(root, projectSlug, id) {
+  return showArtifact(root, projectSlug, id);
+}
+
+export function addArtifactTo(root, projectSlug, payload) {
+  return addArtifact(root, projectSlug, payload);
+}
+
+export function deleteArtifact(root, projectSlug, id) {
+  return coreDeleteArtifact(root, projectSlug, id);
+}
+
+export function tagArtifact(root, projectSlug, id, tags) {
+  return retagArtifact(root, projectSlug, id, tags);
+}
+
+export function changeArtifactKind(root, projectSlug, id, kind) {
+  return setArtifactKind(root, projectSlug, id, kind);
+}
+
+export function getActive(root) {
+  return getActiveProject(root);
+}
+
+export function setActive(root, slug) {
+  return setActiveProject(root, slug);
+}
+
+// The clipboard-capture path, shared by the global hotkey. `readClipboard` is
+// injected by the caller (Electron main) so this stays Electron-free and testable.
+export function captureClipboard(root, readClipboard) {
+  const text = readClipboard();
+  if (!text || !text.trim()) return { ok: false, reason: 'empty' };
+  const project = getActiveProject(root) ?? listProjects(root)[0]?.slug;
+  if (!project) return { ok: false, reason: 'no-project' };
+  const artifact = addArtifact(root, project, { content: text, source: 'clipboard' });
+  return { ok: true, project, artifact };
 }
 
 function cli(root, args) {

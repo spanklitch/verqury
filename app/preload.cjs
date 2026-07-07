@@ -19,5 +19,16 @@ contextBridge.exposeInMainWorld('verqury', {
   copyToClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
+  artifactKinds: () => ipcRenderer.invoke('artifact:kinds'),
+  listArtifacts: (filters) => ipcRenderer.invoke('artifacts:list', filters),
+  getArtifact: (projectSlug, id) => ipcRenderer.invoke('artifact:get', projectSlug, id),
+  deleteArtifact: (projectSlug, id) => ipcRenderer.invoke('artifact:delete', projectSlug, id),
+  retagArtifact: (projectSlug, id, tags) => ipcRenderer.invoke('artifact:retag', projectSlug, id, tags),
+  setArtifactKind: (projectSlug, id, kind) => ipcRenderer.invoke('artifact:setKind', projectSlug, id, kind),
+  getActiveProject: () => ipcRenderer.invoke('project:getActive'),
+  setActiveProject: (slug) => ipcRenderer.invoke('project:setActive', slug),
+  captureNow: () => ipcRenderer.invoke('capture:now'),
+
   onDataChanged: (cb) => ipcRenderer.on('data:changed', () => cb()),
+  onArtifactCaptured: (cb) => ipcRenderer.on('artifact:captured', (_e, info) => cb(info)),
 });

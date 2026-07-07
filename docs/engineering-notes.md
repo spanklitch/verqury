@@ -68,6 +68,26 @@ and writes `verify.json` (+ `shot.png`).
 `renderer/assets/icon.png` and wrap tray creation in try/catch (non-fatal — the window
 is the deliverable).
 
+**Global hotkey + clipboard capture (Ctrl+Alt+C, X11).** `globalShortcut.register`
+returns `false` if the accelerator is already claimed by another app — we log and carry
+on rather than crash (capture is still reachable from the UI button / `capture:now`
+IPC). `globalShortcut.unregisterAll()` runs on `will-quit`. Clipboard is read with
+Electron's `clipboard.readText()` (X11 CLIPBOARD selection). The capture *logic* lives in
+`api.captureClipboard(root, readClipboard)` with the clipboard read **injected**, so it is
+unit-tested under plain Node without Electron; main passes `() => clipboard.readText()`.
+The harness can't synthesize an OS key event, so it verifies the hotkey two ways:
+`globalShortcut.isRegistered(...)` (registration) and calling the same
+`captureFromClipboard()` the shortcut binds to (the handler). Wayland would need a
+portal-based shortcut — deferred (X11 only per ADR-0003).
+
+**Notifications** use Electron's `Notification`; wrapped in try/catch since libnotify may
+be absent on minimal Linux setups (capture still succeeds silently).
+
+**Artifact bodies are stored verbatim, not fenced.** The plan said "fenced if code," but
+raw storage makes copy-back round-trip exactly and keeps the file clean for agents; the
+frontmatter `kind` carries the code/not-code signal. The inbox shows bodies in a `<pre>`,
+not through the markdown renderer.
+
 **Renderer is an ES module.** `index.html` loads `renderer.js` with `type="module"` so
 it can `import` the tested `app/src/markdown.js`. Cross-directory file:// module imports
 work under the `default-src 'self'` CSP. The markdown renderer is intentionally minimal

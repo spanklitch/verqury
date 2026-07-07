@@ -7,10 +7,11 @@ import { parseArgs } from 'node:util';
 import { resolveRoot } from './paths.js';
 import { VERSION } from './index.js';
 import { init } from './init.js';
-import { readConfig } from './config.js';
+import { readConfig, getActiveProject, setActiveProject } from './config.js';
 import * as projects from './projects.js';
 import * as guidance from './guidance.js';
 import * as memory from './memory.js';
+import * as artifacts from './artifacts.js';
 import * as search from './search.js';
 
 const OPTIONS = {
@@ -48,7 +49,10 @@ Usage: verqury <command> [args] [--data-root <dir>]
   guidance promote <project> <slug>    Move project guidance to the global library
   log add <project> <text...>          [--title t]  (or --body -/text)
   decision add <project> <title...>    [--body text|-]
-  search <query...> [--project s] [--type project|guidance|decision|log] [--limit n] [--json]
+  artifact add <project> <content...>  [--kind k] [--tag t] [--title t] (or --body -)
+  artifact list [--project s] [--kind k] [--json]
+  active [<project>]                   Get or set the project new captures file into
+  search <query...> [--project s] [--type project|guidance|decision|log|artifact] [--limit n] [--json]
   timeline <project>                   Log + decisions, newest first
   index rebuild | refresh
   config show
@@ -237,6 +241,41 @@ function main() {
         console.log(`  ${h.snippet.replace(/\s+/g, ' ').trim()}`);
         console.log(`  ${h.path}`);
       }
+      return;
+    }
+
+    case 'artifact': {
+      if (sub === 'add') {
+        const project = positionals[2];
+        if (!project) fail('artifact add needs a <project>');
+        const content = positionals.slice(3).join(' ') || bodyFrom(values);
+        const a = artifacts.addArtifact(root, project, {
+          content,
+          kind: values.kind,
+          tags: values.tag ?? [],
+          title: values.title,
+          source: 'manual',
+        });
+        afterMutation();
+        console.log(`Captured ${a.kind} → ${project}/${a.id}`);
+        return;
+      }
+      if (sub === 'list') {
+        const list = artifacts.listArtifacts(root, { project: values.project, kind: values.kind });
+        if (values.json) return void console.log(JSON.stringify(list));
+        if (!list.length) return console.log('(no artifacts)');
+        for (const a of list) console.log(`${a.captured}\t${a.kind}\t${a.project}\t${a.preview}`);
+        return;
+      }
+      return fail(`unknown artifact subcommand: ${sub ?? '(none)'}`);
+    }
+
+    case 'active': {
+      const slug = positionals[1];
+      if (!slug) return void console.log(getActiveProject(root) ?? '(none)');
+      projects.showProject(root, slug); // validate it exists
+      setActiveProject(root, slug);
+      console.log(`Active project: ${slug}`);
       return;
     }
 

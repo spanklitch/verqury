@@ -14,10 +14,15 @@ const state = {
   mode: 'projects',
   stages: [],
   kinds: [],
+  artifactKinds: [],
   projects: [],
   guidance: [],
-  activeProject: null,
+  artifacts: [],
+  activeProject: null, // selected project in the projects view
   activeGuidance: null, // { scope, slug }
+  activeArtifact: null, // { project, id }
+  captureTarget: null, // project new captures file into (plan §4.3)
+  inboxKind: '', // inbox kind filter
 };
 
 function h(tag, attrs = {}, ...kids) {
@@ -104,13 +109,121 @@ function renderSearchResults(hits) {
 }
 
 function openHit(hit) {
+  const base = (hit.path || '').split('/').pop()?.replace(/\.md$/, '');
   if (hit.type === 'guidance') {
     setMode('guidance');
-    selectGuidance(hit.project || 'global', hit.title);
+    selectGuidance(hit.project || 'global', base);
+  } else if (hit.type === 'artifact') {
+    setMode('inbox');
+    selectArtifact(hit.project, base);
   } else if (hit.project) {
     setMode('projects');
     selectProject(hit.project);
   }
+}
+
+/* ---------- inbox ---------- */
+
+function renderInboxList() {
+  const targetSel = h('select', {
+    onchange: async (e) => {
+      state.captureTarget = e.target.value;
+      await window.verqury.setActiveProject(e.target.value);
+    },
+  });
+  for (const p of state.projects) {
+    const opt = h('option', { value: p.slug, text: p.name });
+    if (p.slug === state.captureTarget) opt.selected = true;
+    targetSel.append(opt);
+  }
+  const kindFilter = h('select', { class: 'kind-filter', onchange: (e) => { state.inboxKind = e.target.value; renderInboxList(); } });
+  kindFilter.append(h('option', { value: '', text: 'All kinds' }));
+  for (const k of state.artifactKinds) {
+    const o = h('option', { value: k, text: k });
+    if (k === state.inboxKind) o.selected = true;
+    kindFilter.append(o);
+  }
+
+  listEl.replaceChildren(
+    h('div', { class: 'capture-controls' },
+      h('div', { class: 'capture-row' }, h('span', { class: 'muted', text: 'Capture to' }), targetSel),
+      h('button', { class: 'btn wide', onclick: () => window.verqury.captureNow() }, 'Capture clipboard  ⌃⌥C'),
+      h('div', { class: 'capture-row' }, h('span', { class: 'muted', text: 'Filter' }), kindFilter)),
+  );
+
+  const items = state.artifacts.filter((a) => !state.inboxKind || a.kind === state.inboxKind);
+  if (!items.length) {
+    listEl.append(h('div', { class: 'project-card', text: 'No artifacts. Copy something and press Ctrl+Alt+C.' }));
+    return;
+  }
+  for (const a of items) {
+    const active = state.activeArtifact && state.activeArtifact.id === a.id;
+    listEl.append(
+      h('div', { class: `artifact-card${active ? ' active' : ''}`, onclick: () => selectArtifact(a.project, a.id) },
+        h('div', { class: 'card-meta' },
+          h('span', { class: 'badge kind', text: a.kind ?? '—' }),
+          h('span', { class: 'badge', text: a.project })),
+        h('div', { class: 'preview', text: a.preview || '(empty)' }),
+        h('div', { class: 'when', text: (a.captured ?? '').replace('T', ' ').slice(0, 16) })),
+    );
+  }
+}
+
+function renderArtifactDetail(a) {
+  const kindSel = h('select', {
+    onchange: async (e) => { await window.verqury.setArtifactKind(a.project, a.id, e.target.value); toast('Kind updated'); await refreshInbox(); },
+  });
+  for (const k of state.artifactKinds) {
+    const o = h('option', { value: k, text: k });
+    if (k === a.kind) o.selected = true;
+    kindSel.append(o);
+  }
+
+  const tagsInput = h('input', { type: 'text', value: (a.tags ?? []).join(', '), placeholder: 'comma, separated, tags' });
+  const saveTags = h('button', { class: 'btn', onclick: async () => {
+    const tags = tagsInput.value.split(',').map((s) => s.trim()).filter(Boolean);
+    await window.verqury.retagArtifact(a.project, a.id, tags);
+    toast('Tags saved');
+    await refreshInbox();
+  } }, 'Save');
+
+  const body = h('pre', { class: 'artifact-body' });
+  body.textContent = a.body ?? '';
+
+  const actions = h('div', { class: 'detail-actions' },
+    h('button', { class: 'btn primary', onclick: () => { window.verqury.copyToClipboard(a.body ?? ''); toast('Copied to clipboard'); } }, 'Copy back'),
+    h('button', { class: 'btn', onclick: async () => {
+      await window.verqury.deleteArtifact(a.project, a.id);
+      state.activeArtifact = null;
+      toast('Deleted');
+      await refreshInbox();
+      detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select an artifact.' }));
+    } }, 'Delete'));
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: a.title || a.kind || 'Artifact' })),
+    h('div', { class: 'detail-sub', text: `captured ${(a.captured ?? '').replace('T', ' ').slice(0, 19)} · ${a.project} · ${a.source ?? ''}` }),
+    h('div', { class: 'form-row' },
+      h('label', {}, 'Kind', kindSel),
+      h('label', {}, 'Tags', h('div', { class: 'tag-edit' }, tagsInput, saveTags))),
+    actions, body,
+  );
+}
+
+async function selectArtifact(project, id) {
+  state.activeArtifact = { project, id };
+  renderInboxList();
+  try {
+    renderArtifactDetail(await window.verqury.getArtifact(project, id));
+  } catch {
+    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Artifact not found.' }));
+  }
+}
+
+async function refreshInbox() {
+  state.artifacts = await window.verqury.listArtifacts({});
+  if (searchEl.value.trim()) return;
+  if (state.mode === 'inbox') renderInboxList();
 }
 
 /* ---------- detail panes ---------- */
@@ -295,9 +408,12 @@ function setMode(mode) {
     renderProjectList();
     if (state.activeProject) selectProject(state.activeProject);
     else detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select a project.' }));
-  } else {
+  } else if (mode === 'guidance') {
     renderGuidanceList();
     detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select guidance, or create new.' }));
+  } else {
+    renderInboxList();
+    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select an artifact, or press Ctrl+Alt+C to capture.' }));
   }
 }
 
@@ -308,7 +424,11 @@ searchEl.addEventListener('input', () => {
   clearTimeout(searchTimer);
   const q = searchEl.value.trim();
   searchTimer = setTimeout(async () => {
-    if (!q) return state.mode === 'projects' ? renderProjectList() : renderGuidanceList();
+    if (!q) {
+      if (state.mode === 'projects') return renderProjectList();
+      if (state.mode === 'guidance') return renderGuidanceList();
+      return renderInboxList();
+    }
     renderSearchResults(await window.verqury.search(q));
   }, 180);
 });
@@ -316,16 +436,24 @@ searchEl.addEventListener('input', () => {
 async function refreshAll() {
   await refreshProjects();
   await refreshGuidance();
+  await refreshInbox();
 }
 
 async function init() {
   state.stages = await window.verqury.getStages();
   state.kinds = await window.verqury.guidanceKinds();
+  state.artifactKinds = await window.verqury.artifactKinds();
   state.projects = await window.verqury.listProjects();
   state.guidance = await window.verqury.listAllGuidance();
+  state.artifacts = await window.verqury.listArtifacts({});
+  state.captureTarget = (await window.verqury.getActiveProject()) || (state.projects[0]?.slug ?? null);
   renderProjectList();
   if (state.projects.length) await selectProject(state.projects[0].slug);
   window.verqury.onDataChanged(() => refreshAll());
+  window.verqury.onArtifactCaptured((info) => {
+    setMode('inbox');
+    refreshInbox().then(() => info && selectArtifact(info.project, info.id));
+  });
   window.__verquryReady = true; // signal for headless verification
 }
 

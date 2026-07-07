@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and promote-to-global. Core gains `listAllGuidance` / `promoteGuidance` and
   `guidance promote` / `guidance list --all` CLI. A small dependency-free
   markdown renderer (also upgrades the project narrative from plain text).
+- Artifact inbox + clipboard capture: a global Ctrl+Alt+C hotkey files the
+  clipboard into the active project as a kind-classified artifact; an Inbox tab
+  lists artifacts with kind filter, copy-back, retag, change-kind, and delete;
+  an active-project selector. Core gains an `artifacts` module, an in-house ULID
+  generator, `activeProject` config, artifact indexing, and `artifact` / `active`
+  CLI commands.
 
 ### Changed
 - Renamed product Velora → **Verqury** (prior name in use by another company);

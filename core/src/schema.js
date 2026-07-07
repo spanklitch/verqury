@@ -7,6 +7,8 @@ export const STAGES = [
 export const STATUSES = ['active', 'paused', 'shipped', 'archived'];
 export const GUIDANCE_KINDS = ['skill', 'standard', 'instruction', 'template'];
 export const DECISION_STATUSES = ['proposed', 'accepted', 'superseded'];
+export const ARTIFACT_KINDS = ['prompt', 'command', 'snippet', 'report', 'note', 'url'];
+export const ARTIFACT_SOURCES = ['clipboard', 'manual', 'report'];
 
 export function assertEnum(value, allowed, label) {
   if (!allowed.includes(value)) {

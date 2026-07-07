@@ -12,6 +12,7 @@ export function defaultConfig() {
     createdAt: new Date().toISOString(),
     hotkeys: { capture: 'Ctrl+Alt+C' },
     adapters: [],
+    activeProject: null,
   };
 }
 
@@ -21,4 +22,20 @@ export function readConfig(root) {
 
 export function writeConfig(root, config) {
   fs.writeFileSync(configPath(root), JSON.stringify(config, null, 2) + '\n');
+}
+
+// The project new captures are filed into (plan §4.3). Read tolerantly.
+export function getActiveProject(root) {
+  try {
+    return readConfig(root).activeProject ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveProject(root, slug) {
+  const config = readConfig(root);
+  config.activeProject = slug;
+  writeConfig(root, config);
+  return slug;
 }
