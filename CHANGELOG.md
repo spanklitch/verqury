@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Project scaffold: repo, standard doc set (README, ADRs 0001–0005,
   engineering notes), phased build plan, Node workspace (`core/` + `app/`).
+- `verqury-core` data layer: data-root bootstrap, frontmatter read/write,
+  project registry (create/list/show/set-stage), guidance library
+  (global + project scoped), project memory (log entries + numbered
+  decisions), and a rebuildable SQLite FTS5 search index (build / incremental
+  refresh / search / full rebuild).
+- `verqury` CLI over the core library: `init`, `project`, `guidance`, `log`,
+  `decision`, `search`, `index`, `config` commands.
 
 ### Changed
 - Renamed product Velora → **Verqury** (prior name in use by another company);

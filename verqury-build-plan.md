@@ -201,8 +201,8 @@ criteria and a PROGRESS.md update.
   `project set-stage`, `guidance list/show/add`, `log add`, `decision add`.
 - SQLite FTS index: build, incremental refresh, `search <query>`, full rebuild.
 - Unit tests against a temp data root.
-- **Done when:** from a clean shell, `verqury init && companion project create demo
-  && companion search demo` works; tests pass; index deletes/rebuilds cleanly.
+- **Done when:** from a clean shell, `verqury init && verqury project create demo
+  && verqury search demo` works; tests pass; index deletes/rebuilds cleanly.
 
 ### Phase 2 — Electron shell + project views (medium)
 - Electron app boots to tray + main window; loads verqury-core.

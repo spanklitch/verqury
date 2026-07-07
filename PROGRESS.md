@@ -7,7 +7,7 @@ verify success criteria, update this file.
 ## Phase checklist
 
 - [x] **Phase 0 — Repo init & scaffolding** (2026-07-06)
-- [ ] **Phase 1 — verqury-core: data layer + CLI**
+- [x] **Phase 1 — verqury-core: data layer + CLI** (2026-07-07)
 - [ ] **Phase 2 — Electron shell + project views**
 - [ ] **Phase 3 — Guidance library**
 - [ ] **Phase 4 — Artifact inbox + clipboard capture**
@@ -60,3 +60,35 @@ protocol. No dependencies beyond eslint installed (gray-matter, better-sqlite3, 
 etc. land in Phase 1 when used).
 
 **Next session:** Phase 1 — data layer + CLI (the keystone; plan §5 Phase 1 + §3 spec).
+
+### 2026-07-07 — Phase 1 (session 2, Opus)
+**Shipped:** `verqury-core` data layer + `verqury` CLI. Modules in `core/src/`:
+`paths`, `slug`, `schema` (enum vocab + validation), `frontmatter` (gray-matter
+wrapper), `config`, `init`, `projects` (create/list/show/set-stage), `guidance`
+(add/list/show, global + project scope), `memory` (log add, numbered decision add),
+`search` (FTS5 build/refresh/search/rebuild), barrel `index.js`, and `cli.js`
+(init, project, guidance, log, decision, search, index, config). Deps added:
+better-sqlite3, gray-matter. 17 tests across 6 files (unit + CLI child-process
+round-trip) against temp data roots.
+
+**Verified:** `npm test` 17/17 green; `npm run lint` clean; manual end-to-end run of
+the success-criteria commands (init → project create → log/decision → search →
+delete index.sqlite → rebuild → search) all correct; generated project.md /
+decision / config.json inspected — well-formed YAML frontmatter, Ctrl+Alt+C hotkey
+default present.
+
+**Deviations from plan (deliberate, per simplicity rule):**
+- **ULID deferred to Phase 4.** Plan listed "ULID generation" under Phase 1, but no
+  Phase-1 command produces one (ULIDs are for artifacts/tasks). Added no ulid dep.
+- **chokidar deferred to Phase 2.** Phase 1 needs on-demand build/refresh/rebuild
+  only; the live watcher is an app-runtime concern.
+- Domain functions do pure file I/O; the CLI refreshes the index after mutations
+  (clean ADR-0001 boundary; the Phase 2 watcher will refresh its own way).
+- Fixed a leftover `companion` typo in the plan's Phase 1 success criteria → `verqury`.
+- Broadened `.gitignore` `*.sqlite` → `*.sqlite*` (WAL side files).
+
+**Not done (deliberate):** artifacts/tasks/packets dirs are created per project but
+have no commands yet (their phases: 4/6/5). No Electron. No push yet — awaits Gary.
+
+**Next session:** Phase 2 — Electron shell + project views (plan §5 Phase 2). First
+Electron install; budget time for better-sqlite3 electron-rebuild (plan §6).

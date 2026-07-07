@@ -9,5 +9,9 @@
   },
   "scripts": {
     "test": "node --test test/"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "gray-matter": "^4.0.3"
   }
 }

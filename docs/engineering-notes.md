@@ -16,8 +16,25 @@ The architecture *why* lives in [`adr/`](adr/); this file is the *how* and the *
 
 ## 2. Data layer & index
 
-<!-- symptom → cause → fix entries as they are earned. Watch: file-watcher/index drift,
-     frontmatter parse failures, concurrent app+agent writes. -->
+**The index is derived, never authoritative (ADR-0001).** `core/src/search.js`
+scans the markdown tree and mirrors it into SQLite FTS5. Delete `index.sqlite` and
+`verqury index rebuild` (or any mutation, which refreshes) reconstructs it. No code
+path may read state that exists *only* in SQLite.
+
+**FTS5 has no UPDATE.** Row changes are done as delete-then-insert keyed on `path`.
+`refreshIndex` compares each file's `mtime` (stored `UNINDEXED`) to the indexed value:
+unchanged → skip, changed → delete+insert, missing-on-disk → delete. This is why
+`documents` stores `path`/`type`/`project`/`mtime` as `UNINDEXED` columns — retrievable
+and filterable, but not tokenized into the full-text terms.
+
+**Separation of concerns:** core domain functions (`projects`, `guidance`, `memory`)
+do pure file I/O and never touch the DB. The CLI refreshes the index after a mutation;
+the Phase 2 Electron watcher will own refresh its own way. Keep it that way — it keeps
+the "files are truth" boundary clean.
+
+**WAL side files:** the index opens in WAL mode, so `index.sqlite-wal` / `-shm` appear
+next to it. `.gitignore` uses `*.sqlite*` to cover them (the data root is outside the
+repo anyway; this is defensive).
 
 ## 3. Electron shell & OS integration
 

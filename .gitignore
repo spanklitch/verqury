@@ -11,8 +11,8 @@ build/
 out/
 
 # Rebuildable index / local data (ADR-0001: files are the database, index is cache)
-*.sqlite
-*.sqlite-journal
+# Glob covers WAL side files (index.sqlite-wal / -shm) too.
+*.sqlite*
 
 # Noise
 *.log

@@ -28,3 +28,10 @@ outward-facing docs are README.md, CHANGELOG.md, docs/adr/, docs/engineering-not
 ### 2026-07-06 — Phase 0
 Scaffolded repo, docs, workspace. Details in PROGRESS.md session log. Nothing
 non-obvious encountered.
+
+### 2026-07-07 — Phase 1
+verqury-core data layer + `verqury` CLI (projects, guidance, memory, FTS5 search).
+Deps: better-sqlite3, gray-matter. 17 tests green. Deferred ULID→Phase 4 and
+chokidar→Phase 2 (no Phase-1 consumer). Domain = pure file I/O; CLI refreshes the
+index after mutations. FTS5 = delete+insert on mtime change (no UPDATE) — see
+docs/engineering-notes.md §2. Details in PROGRESS.md session log.
