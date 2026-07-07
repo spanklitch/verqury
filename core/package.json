@@ -1,11 +1,11 @@
 {
-  "name": "velora-core",
+  "name": "verqury-core",
   "version": "0.0.0",
-  "description": "Velora core — file-first data layer, search index, and CLI",
+  "description": "Verqury core — file-first data layer, search index, and CLI",
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "velora": "src/cli.js"
+    "verqury": "src/cli.js"
   },
   "scripts": {
     "test": "node --test test/"

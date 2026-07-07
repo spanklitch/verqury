@@ -1,6 +1,6 @@
 # Engineering Notes & Runbook
 
-Operational knowledge for building, shipping, and debugging Velora — written so someone
+Operational knowledge for building, shipping, and debugging Verqury — written so someone
 other than the original author can run it. These are hard-won gotchas; most cost a build cycle
 (or several) to diagnose the first time. Organized by area, mostly as *symptom → cause → fix*.
 
@@ -10,7 +10,7 @@ The architecture *why* lives in [`adr/`](adr/); this file is the *how* and the *
 
 ## 1. Build & CI
 
-- Node 20 workspace: `core/` (velora-core library + CLI) and `app/` (Electron shell).
+- Node 20 workspace: `core/` (verqury-core library + CLI) and `app/` (Electron shell).
 - `npm test` runs workspace tests via `node --test` — no test framework dependency.
 - Version is hand-set in package.json until packaging lands (Phase 8).
 
@@ -30,6 +30,6 @@ The architecture *why* lives in [`adr/`](adr/); this file is the *how* and the *
 
 ## 5. Credentials & secrets
 
-- Velora MVP holds no credentials: no API keys, no tokens, no accounts (ADR-0004).
-- The user data root (`~/FlawedWorks/velora/` by default) lives outside the repo and
+- Verqury MVP holds no credentials: no API keys, no tokens, no accounts (ADR-0004).
+- The user data root (`~/FlawedWorks/verqury/` by default) lives outside the repo and
   is never committed; `.sqlite` and `.env` are gitignored defensively.

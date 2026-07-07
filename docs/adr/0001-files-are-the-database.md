@@ -5,9 +5,9 @@
 
 ## Context
 
-Velora's core promise is durable project memory that survives rapid churn in AI tools.
+Verqury's core promise is durable project memory that survives rapid churn in AI tools.
 Terminal coding agents (Claude Code, Cursor-based agents) work directly on local files;
-chat and browser surfaces work on pasted text. If Velora stored its truth in an
+chat and browser surfaces work on pasted text. If Verqury stored its truth in an
 application database, every current and future agent would need an adapter to read or
 write project memory, and the operating record would die with the app.
 
@@ -23,7 +23,7 @@ files. No feature may store truth only in SQLite.
 
 - Any terminal agent gets native read/write access to project memory — the
   model-agnosticism requirement is satisfied structurally, not via integrations.
-- The record is git-versionable, greppable, and fully usable if Velora disappears.
+- The record is git-versionable, greppable, and fully usable if Verqury disappears.
 - Harder: concurrent writes (app + agent editing the same file) must be handled with
   a file watcher and last-write-wins semantics rather than transactions.
 - Harder: schema evolution is convention-based (frontmatter keys), not migrations.

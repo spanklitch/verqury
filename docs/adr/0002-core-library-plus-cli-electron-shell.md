@@ -5,15 +5,15 @@
 
 ## Context
 
-Velora is built one AI-agent session per phase, so each phase must be independently
+Verqury is built one AI-agent session per phase, so each phase must be independently
 verifiable at low cost. The maintainer works terminal-first, and the terminal agents
-that drive builds could themselves use Velora's features headless. Coupling business
+that drive builds could themselves use Verqury's features headless. Coupling business
 logic to an Electron renderer would make every feature testable only through UI.
 
 ## Decision
 
-We will implement all business logic in `velora-core`, a dependency-light plain Node
-package with a thin CLI (`velora` command). The Electron app consumes the same
+We will implement all business logic in `verqury-core`, a dependency-light plain Node
+package with a thin CLI (`verqury` command). The Electron app consumes the same
 library and contains presentation and OS-integration code only (tray, hotkey,
 clipboard, windows).
 
@@ -21,7 +21,7 @@ clipboard, windows).
 
 - Every feature is testable and verifiable from the terminal before UI exists,
   de-risking each build session.
-- Terminal agents and scripts can drive Velora headless.
+- Terminal agents and scripts can drive Verqury headless.
 - UI phases become pure presentation work.
 - Harder: OS-integration features (clipboard capture, hotkeys) still live only in
   the shell, so the CLI cannot exercise them — accepted, they are inherently UI-side.

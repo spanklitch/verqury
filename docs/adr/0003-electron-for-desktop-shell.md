@@ -5,7 +5,7 @@
 
 ## Context
 
-Velora needs three OS-level features to deliver its core loop: a system tray
+Verqury needs three OS-level features to deliver its core loop: a system tray
 presence, a global hotkey, and clipboard capture. The maintainer's stack is
 JavaScript and Python; the target platform is Linux x64 (Xubuntu/X11) only for MVP.
 The main desktop-shell candidates are Electron (JS end-to-end, heavy) and Tauri

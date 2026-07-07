@@ -1,4 +1,4 @@
-# Velora — Engineering Journal / AI Context
+# Verqury — Engineering Journal / AI Context
 
 **Layer, not IDE.** Low-friction Linux desktop companion for AI-assisted product
 development. This file is the raw lab notebook — verbose, chronological. The distilled,
@@ -6,7 +6,7 @@ outward-facing docs are README.md, CHANGELOG.md, docs/adr/, docs/engineering-not
 
 ## Session protocol (binding)
 
-1. Read `velora-build-plan.md` (scope + specs) and `PROGRESS.md` (state) first.
+1. Read `verqury-build-plan.md` (scope + specs) and `PROGRESS.md` (state) first.
 2. Execute exactly ONE phase per session. Verify its success criteria. Update PROGRESS.md.
 3. Anti-goals are binding (plan §1): no embedded chat, no editor, no agent
    orchestration, no cloud/multi-user. Reject scope creep toward these.
@@ -16,10 +16,10 @@ outward-facing docs are README.md, CHANGELOG.md, docs/adr/, docs/engineering-not
 
 ## Key facts
 
-- Workspace: `core/` = velora-core (plain Node lib + `velora` CLI, ESM, node:test);
+- Workspace: `core/` = verqury-core (plain Node lib + `verqury` CLI, ESM, node:test);
   `app/` = Electron shell (empty until Phase 2).
 - Target: Linux x64, X11 (Xubuntu). Wayland deferred.
-- Data root (user data, NOT this repo): `~/FlawedWorks/velora/` — spec in plan §3.
+- Data root (user data, NOT this repo): `~/FlawedWorks/verqury/` — spec in plan §3.
 - Data layer schemas (frontmatter), packet template syntax, adapter config shape:
   all specified in plan §3–§4. The plan is the spec; don't re-derive.
 

@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-This directory records the significant decisions behind Velora — the *why*, not just the
+This directory records the significant decisions behind Verqury — the *why*, not just the
 *what*. Each record is a short, immutable note: the context at the time, the decision taken,
 and the consequences accepted. When a decision is reversed, we don't edit the old record — we
 add a new one that supersedes it, so the reasoning trail stays intact.

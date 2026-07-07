@@ -5,7 +5,7 @@
 
 ## Context
 
-Velora's UI is lists, panes, forms, and a markdown preview — no complex shared state,
+Verqury's UI is lists, panes, forms, and a markdown preview — no complex shared state,
 no deep component trees. The build runs one AI-agent session per phase, where
 dependency surface and build tooling directly cost tokens and debugging time.
 

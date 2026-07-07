@@ -1,5 +1,5 @@
-# Velora — Build Plan
-**Name:** Velora — "Layer, not IDE." A low-friction companion.
+# Verqury — Build Plan
+**Name:** Verqury — "Layer, not IDE." A low-friction companion.
 **Owner:** Gary Seiler / FlawedWorks
 **Plan authored:** 2026-07-06 (Fable 5 planning session; execution intended for Opus)
 **Status:** PLAN — not yet started
@@ -21,7 +21,7 @@ Per-session protocol:
    decision / gotcha / release checkpoints.
 
 Suggested session-start prompt for Gary to paste:
-> Read velora-build-plan.md and PROGRESS.md, then execute the next
+> Read verqury-build-plan.md and PROGRESS.md, then execute the next
 > incomplete phase. Propose your approach before writing code.
 
 ---
@@ -66,8 +66,8 @@ delete it and the app regenerates it by rescanning. Rationale:
 - The app can die and the operating record remains fully usable.
 
 ### ADR-2: Core logic is a plain Node library + CLI; Electron is a shell
-Build `velora-core` as a dependency-light Node package with a thin CLI
-(`velora` command). The Electron app consumes the same library. Rationale:
+Build `verqury-core` as a dependency-light Node package with a thin CLI
+(`verqury` command). The Electron app consumes the same library. Rationale:
 - Every feature is testable/verifiable from the terminal before UI exists.
 - Terminal-first users (and terminal agents!) can drive the product headless.
 - UI phases become pure presentation work — lower risk per session.
@@ -92,10 +92,10 @@ Cuts dependency surface and keeps sessions cheap.
 
 ## 3. Data layer specification
 
-Configurable data root, default `~/FlawedWorks/velora/`:
+Configurable data root, default `~/FlawedWorks/verqury/`:
 
 ```
-velora/
+verqury/
 ├── config.json                # data-root config, adapter registry, hotkeys
 ├── index.sqlite               # rebuildable FTS index — gitignored
 ├── guidance/                  # GLOBAL reusable guidance
@@ -185,7 +185,7 @@ two phases into one session). Every phase ends with verified success
 criteria and a PROGRESS.md update.
 
 ### Phase 0 — Repo init & scaffolding (small)
-- Create repo `velora` under ~/claude-projects/; move this plan into it. `git init`, private GitHub repo AFTER Gary confirms.
+- Create repo `verqury` under ~/claude-projects/; move this plan into it. `git init`, private GitHub repo AFTER Gary confirms.
 - Invoke `project-docs` skill: README, CHANGELOG, docs/adr/ (write ADR-1..5
   from §2), docs/engineering-notes.md.
 - Create `PROGRESS.md` (phase checklist + session log).
@@ -194,18 +194,18 @@ criteria and a PROGRESS.md update.
 - **Done when:** repo exists with docs + ADRs; `npm test` runs (even if trivial);
   PROGRESS.md shows Phase 0 complete.
 
-### Phase 1 — velora-core: data layer + CLI (the keystone, medium-large)
+### Phase 1 — verqury-core: data layer + CLI (the keystone, medium-large)
 - Implement data-root bootstrap, frontmatter read/write (gray-matter),
   schemas from §3, ULID generation.
 - Commands (library API + CLI): `init`, `project create/list/show`,
   `project set-stage`, `guidance list/show/add`, `log add`, `decision add`.
 - SQLite FTS index: build, incremental refresh, `search <query>`, full rebuild.
 - Unit tests against a temp data root.
-- **Done when:** from a clean shell, `velora init && companion project create demo
+- **Done when:** from a clean shell, `verqury init && companion project create demo
   && companion search demo` works; tests pass; index deletes/rebuilds cleanly.
 
 ### Phase 2 — Electron shell + project views (medium)
-- Electron app boots to tray + main window; loads velora-core.
+- Electron app boots to tray + main window; loads verqury-core.
 - Views: project list (stage/status badges), project detail (narrative,
   stage control, memory timeline: log + decisions merged chronologically).
 - Global search box backed by FTS.
@@ -218,7 +218,7 @@ criteria and a PROGRESS.md update.
 - Global + project guidance browsing, search, markdown preview, copy-to-
   clipboard, new-from-template, promote-to-global.
 - **Done when:** a project instruction file created in the UI is a valid
-  markdown file on disk, findable via `velora search`, and promotable
+  markdown file on disk, findable via `verqury search`, and promotable
   to guidance/ global.
 
 ### Phase 4 — Artifact inbox + clipboard capture (medium; the riskiest OS integration)
@@ -233,7 +233,7 @@ criteria and a PROGRESS.md update.
 
 ### Phase 5 — Session bootstrapper (medium)
 - Packet templates per §3; resolver for `{{include}}` globs and
-  `{{project.*}}` variables in core, with CLI: `velora packet render <slug>`.
+  `{{project.*}}` variables in core, with CLI: `verqury packet render <slug>`.
 - UI: pick project → pick packet → preview → copy to clipboard / write to file.
 - Ship 3 starter packets: `chat-ideation`, `terminal-build` (writes a context
   file into the project repo), `browser-task`.
@@ -287,9 +287,9 @@ criteria and a PROGRESS.md update.
   than rush; PROGRESS.md records the split point.
 
 ## 7. Open questions for Gary (answer before Phase 0)
-1. Data root location: `~/FlawedWorks/velora/` proposed — confirm.
+1. Data root location: `~/FlawedWorks/verqury/` proposed — confirm.
 2. Should existing projects (Mebit, ZAGNALS) be back-imported as seed data
    during Phase 1 testing, or start clean?
 3. Default capture hotkey preference.
 
-(Resolved: name = **Velora**, tagline "Layer, not IDE" — 2026-07-06.)
+(Resolved: name = **Verqury**, tagline "Layer, not IDE" — 2026-07-06.)
