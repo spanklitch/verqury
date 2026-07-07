@@ -13,7 +13,7 @@ verify success criteria, update this file.
 - [x] **Phase 4 — Artifact inbox + clipboard capture** (2026-07-07)
 - [x] **Phase 5 — Session bootstrapper** (2026-07-07)
 - [x] **Phase 6 — Task router** (2026-07-07)
-- [ ] **Phase 7 — Adapter registry + launch**
+- [x] **Phase 7 — Adapter registry + launch** (2026-07-07)
 - [ ] **Phase 8 — Packaging, docs, release prep**
 
 ## Open questions (plan §7)
@@ -269,3 +269,36 @@ adapters {slug,label,launch command,packet template,notes}; settings UI to add/e
 per-project launch buttons (spawn detached, e.g. xfce4-terminal at repo running the agent);
 starter adapters (claude-code/claude-chat/cursor/browser-agent). Adding an adapter must
 need ZERO code changes. This connects task.surface + packet.surface to real launches.
+
+### 2026-07-07 — Phase 7 (session 8, Opus)
+**Shipped:** Adapter registry — ADR-0004 made concrete. Core `adapters.js`: config-only AI
+surfaces {slug,label,command,packet,notes}, CRUD over config.json, `resolveCommand`
+({{repo}}/{{project.*}} substitution), 4 starter adapters seeded once (tracked by
+config.adaptersSeeded). `adapter list` CLI. App: Settings tab (⚙) with adapter list +
+add/edit/remove form; per-adapter launch buttons in each project detail. `adapter:launch`
+(main) renders the handoff packet → clipboard, then spawns the substituted command detached
+(shell:true, unref). `adapter:*` IPC.
+
+**Verified:**
+- 47 tests green (35 core incl. 3 adapter cases: starters seeded, CRUD, resolveCommand;
+  12 app). Lint clean.
+- VERQURY_VERIFY harness — done-when via the SETTINGS FORM (not code): filled the New-adapter
+  form and saved → **adapterCards=5** (4 starters + fictional "Harness"), then launched it →
+  **adapterLaunched=true** (its `echo > sentinel` command ran) + **adapterHandoffCopied=true**
+  (its terminal-build packet copied to clipboard). **All Phase 2–6 checks still pass in the
+  same run** (full regression). Screenshot confirms the Settings/adapter UI.
+
+**Deviations:** none. (Phase 7 implements the pre-existing ADR-0004; no new ADR.)
+
+**Gotcha recorded:** config.json is NOT watched (watcher covers projects/ + guidance/ only),
+so adapter changes don't fire data:changed — the settings UI refreshes its own list after
+each mutation. See engineering-notes §3.
+
+**Not done (deliberate):** launch commands target XFCE/X11 (xfce4-terminal/xdg-open) per
+ADR-0003; other DEs need the user to edit the command (that's the point — pure config).
+
+**Next session:** Phase 8 — Packaging, docs, release prep (plan §5 Phase 8, the LAST):
+electron-builder AppImage + .deb, autostart-to-tray option, README polish, CHANGELOG 0.1.0,
+annotated v0.1.0 tag, screenshots, security/sanitization pass. NOTE the ADR-0006 caveat:
+the app shells out to system `node` for search — packaging must bundle node or rebuild
+better-sqlite3 for Electron (decide + document; may supersede ADR-0006).

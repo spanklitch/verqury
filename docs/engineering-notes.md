@@ -88,6 +88,15 @@ raw storage makes copy-back round-trip exactly and keeps the file clean for agen
 frontmatter `kind` carries the code/not-code signal. The inbox shows bodies in a `<pre>`,
 not through the markdown renderer.
 
+**Adapter launch spawns detached; config.json is not watched.** `adapter:launch` renders
+the adapter's handoff packet to the clipboard, then `spawn(command, { shell: true,
+detached: true, stdio: 'ignore' })` + `unref()` so the launched app outlives Verqury
+(ADR-0004). The file watcher covers `projects/` and `guidance/` only — **not** `config.json`
+— so adapter add/edit/remove does not fire `data:changed`. That's fine because the settings
+UI refreshes its own list after each mutation (`refreshAdapters`); just don't expect an
+out-of-band `config.json` edit to appear live without a reopen. Commands are the user's own
+config (a launcher), so `shell: true` is acceptable here.
+
 **Renderer is an ES module.** `index.html` loads `renderer.js` with `type="module"` so
 it can `import` the tested `app/src/markdown.js`. Cross-directory file:// module imports
 work under the `default-src 'self'` CSP. The markdown renderer is intentionally minimal

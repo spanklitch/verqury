@@ -4,10 +4,34 @@
 import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, clipboard, shell, globalShortcut, Notification } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { addLog } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
+
+// Launch an adapter for a project: copy its handoff packet to the clipboard, then
+// spawn its (substituted) command detached so it outlives the app (ADR-0004).
+function launchAdapter(adapterSlug, projectSlug) {
+  const adapter = api.getOneAdapter(root, adapterSlug);
+  if (!adapter) throw new Error(`No such adapter: ${adapterSlug}`);
+  const { project } = api.getProject(root, projectSlug);
+  const command = api.resolveAdapterCommand(adapter.command, project);
+  let copiedPacket = false;
+  if (adapter.packet) {
+    try {
+      clipboard.writeText(api.renderPacket(root, adapter.packet, projectSlug).text);
+      copiedPacket = true;
+    } catch {
+      // packet may have been deleted; launch anyway
+    }
+  }
+  if (command.trim()) {
+    const child = spawn(command, { shell: true, detached: true, stdio: 'ignore' });
+    child.unref();
+  }
+  return { launched: Boolean(command.trim()), command, copiedPacket };
+}
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const iconPath = path.join(dir, 'renderer', 'assets', 'icon.png');
@@ -85,6 +109,12 @@ function setupIpc() {
     return { payload };
   });
   ipcMain.handle('task:attachReport', (_e, projectSlug, id, artifactId) => api.attachReport(root, projectSlug, id, artifactId));
+
+  ipcMain.handle('adapters:list', () => api.getAdapters(root));
+  ipcMain.handle('adapter:add', (_e, adapter) => api.createAdapter(root, adapter));
+  ipcMain.handle('adapter:update', (_e, slug, patch) => api.updateAdapter(root, slug, patch));
+  ipcMain.handle('adapter:remove', (_e, slug) => api.removeAdapter(root, slug));
+  ipcMain.handle('adapter:launch', (_e, adapterSlug, projectSlug) => launchAdapter(adapterSlug, projectSlug));
 }
 
 function notify(body) {
@@ -249,6 +279,28 @@ async function runVerify(outDir) {
     result.taskCards = await dom("document.querySelectorAll('#list .task-card').length");
     await dom("document.querySelector('#list .task-card')?.click()");
     await wait(150);
+
+    // (9) adapter registry (done-when): add a fictional adapter THROUGH THE SETTINGS
+    // FORM (zero code), then launch — its command runs and its packet is handed off.
+    const sentinel = path.join(outDir, 'adapter-launched.txt');
+    await dom("document.querySelector('.tab[data-mode=settings]').click()");
+    await wait(150);
+    await dom("document.querySelector('#list .btn.wide').click()"); // '+ New adapter'
+    await wait(150);
+    await dom(`(() => {
+      const ins = document.querySelectorAll('.form input');
+      ins[0].value = 'Harness';
+      ins[1].value = ${JSON.stringify(`echo ok > ${sentinel}`)};
+      document.querySelector('.form select').value = 'terminal-build';
+      [...document.querySelectorAll('.detail-actions button')].find((b) => b.textContent === 'Save').click();
+    })()`);
+    await wait(350);
+    result.adapterCards = await dom("document.querySelectorAll('#list .adapter-card').length"); // 4 starters + harness
+    clipboard.writeText('none');
+    await dom(`window.verqury.launchAdapter('harness', ${JSON.stringify(slug)})`);
+    await wait(500);
+    result.adapterLaunched = fs.existsSync(sentinel);
+    result.adapterHandoffCopied = /build context/.test(clipboard.readText());
 
     const image = await win.webContents.capturePage();
     const png = image.toPNG();

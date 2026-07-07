@@ -14,6 +14,7 @@ import * as memory from './memory.js';
 import * as artifacts from './artifacts.js';
 import * as packets from './packets.js';
 import * as tasks from './tasks.js';
+import * as adapters from './adapters.js';
 import * as search from './search.js';
 
 const OPTIONS = {
@@ -58,6 +59,7 @@ Usage: verqury <command> [args] [--data-root <dir>]
   artifact add <project> <content...>  [--kind k] [--tag t] [--title t] (or --body -)
   artifact list [--project s] [--kind k] [--json]
   active [<project>]                   Get or set the project new captures file into
+  adapter list                         Configured AI surfaces (launch/handoff)
   packet list
   packet render <packet> <project>     Render a bootstrap packet [--out file] [--log N]
   task add <project> <title...>        [--route r] [--surface s] (or --body -)
@@ -361,6 +363,17 @@ function main() {
         return;
       }
       return fail(`unknown task subcommand: ${sub ?? '(none)'}`);
+    }
+
+    case 'adapter': {
+      if (sub === 'list') {
+        const list = adapters.listAdapters(root);
+        if (values.json) return void console.log(JSON.stringify(list));
+        if (!list.length) return console.log('(no adapters)');
+        for (const a of list) console.log(`${a.slug}\t${a.packet ?? '—'}\t${a.label}\t${a.command}`);
+        return;
+      }
+      return fail(`unknown adapter subcommand: ${sub ?? '(none)'}`);
     }
 
     case 'timeline': {

@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   links a captured inbox artifact, marks the task done, and echoes a completion entry
   into the project's memory timeline. Core gains a `tasks` module and `verqury task
   add|list|status|handoff|report` CLI.
+- Adapter registry: AI surfaces defined purely as config ([ADR-0004](docs/adr/0004-adapters-are-launch-handoff-config.md)) —
+  `{slug, label, launch command, handoff packet, notes}`. A Settings tab adds/edits/
+  removes adapters, and each project detail has per-adapter launch buttons that copy the
+  handoff packet to the clipboard and spawn the (substituted) command detached. Ships
+  four starter adapters (claude-code, claude-chat, cursor, browser-agent). Adding a new
+  AI tool needs zero code changes. New `verqury adapter list` CLI.
 
 ### Changed
 - Renamed product Velora → **Verqury** (prior name in use by another company);

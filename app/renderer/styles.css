@@ -267,6 +267,14 @@ body {
   .badge.status-done { color: #6fd3a6; }
 }
 
+/* Adapters / settings */
+.adapter-card { padding: 9px 11px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+.adapter-card:hover { background: var(--panel-2); }
+.adapter-card.active { background: var(--panel-2); border-color: var(--line); }
+.adapter-card .name { font-weight: 550; }
+.launch-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 18px; }
+.launch-row .btn { padding: 5px 11px; font-size: 12.5px; }
+
 /* Toast */
 .toast {
   position: fixed;

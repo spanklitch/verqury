@@ -21,7 +21,9 @@ const state = {
   guidance: [],
   artifacts: [],
   tasks: [],
+  adapters: [],
   activeProject: null, // selected project in the projects view
+  activeAdapter: null, // selected adapter slug in settings
   activeGuidance: null, // { scope, slug }
   activeArtifact: null, // { project, id }
   activeTask: null, // { project, id }
@@ -410,11 +412,101 @@ function renderProjectDetail(project, timeline) {
     );
   }
 
+  const launchRow = h('div', { class: 'launch-row' });
+  if (state.adapters.length) {
+    launchRow.append(h('span', { class: 'muted', text: 'Launch:' }));
+    for (const a of state.adapters) {
+      launchRow.append(h('button', { class: 'btn', title: a.notes ?? '', onclick: async () => {
+        try {
+          const r = await window.verqury.launchAdapter(a.slug, project.slug);
+          toast(r.copiedPacket ? `Launched ${a.label} — context copied` : `Launched ${a.label}`);
+        } catch (err) { toast(err.message); }
+      } }, a.label));
+    }
+  }
+
   const bootstrapBtn = h('button', { class: 'btn', onclick: () => showBootstrap(project.slug) }, '⚡ Bootstrap');
   detailEl.replaceChildren(
     h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: project.name }), h('div', { class: 'head-actions' }, bootstrapBtn, select)),
-    sub, narrative, timelineEl,
+    sub, launchRow, narrative, timelineEl,
   );
+}
+
+/* ---------- settings: adapter registry ---------- */
+
+function renderSettingsList() {
+  listEl.replaceChildren(h('button', { class: 'btn wide', onclick: () => showAdapterForm(null) }, '＋ New adapter'));
+  listEl.append(h('div', { class: 'section-label', text: 'AI surfaces' }));
+  for (const a of state.adapters) {
+    const active = state.activeAdapter === a.slug;
+    listEl.append(
+      h('div', { class: `adapter-card${active ? ' active' : ''}`, onclick: () => showAdapterForm(a.slug) },
+        h('div', { class: 'name', text: a.label }),
+        h('div', { class: 'card-meta' },
+          h('span', { class: 'badge', text: a.slug }),
+          a.packet ? h('span', { class: 'badge kind', text: a.packet }) : null)),
+    );
+  }
+}
+
+async function showAdapterForm(slug) {
+  state.activeAdapter = slug;
+  renderSettingsList();
+  const existing = slug ? state.adapters.find((a) => a.slug === slug) : null;
+  const packets = await window.verqury.listPackets();
+
+  const labelInput = h('input', { type: 'text', placeholder: 'Label' });
+  labelInput.value = existing?.label ?? '';
+  const commandInput = h('input', { type: 'text', placeholder: 'e.g. xfce4-terminal --working-directory={{repo}} --command=claude' });
+  commandInput.value = existing?.command ?? '';
+  const packetSel = h('select', {});
+  packetSel.append(h('option', { value: '', text: '(no handoff packet)' }));
+  for (const p of packets) {
+    const o = h('option', { value: p.slug, text: p.title });
+    if (existing?.packet === p.slug) o.selected = true;
+    packetSel.append(o);
+  }
+  const notesInput = h('textarea', { placeholder: 'Notes' });
+  notesInput.value = existing?.notes ?? '';
+
+  const save = h('button', { class: 'btn primary', onclick: async () => {
+    if (!labelInput.value.trim()) return toast('Label is required');
+    const payload = { label: labelInput.value.trim(), command: commandInput.value, packet: packetSel.value || null, notes: notesInput.value };
+    try {
+      if (existing) await window.verqury.updateAdapter(existing.slug, payload);
+      else state.activeAdapter = (await window.verqury.addAdapter(payload)).slug;
+      await refreshAdapters();
+      toast('Saved');
+      showAdapterForm(state.activeAdapter);
+    } catch (err) { toast(err.message); }
+  } }, 'Save');
+
+  const buttons = [save];
+  if (existing) {
+    buttons.push(h('button', { class: 'btn', onclick: async () => {
+      await window.verqury.removeAdapter(existing.slug);
+      state.activeAdapter = null;
+      await refreshAdapters();
+      toast('Removed');
+      detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select or add an adapter.' }));
+    } }, 'Delete'));
+  }
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: existing ? existing.label : 'New adapter' })),
+    h('div', { class: 'detail-sub', text: 'An AI surface defined purely by config — a launch command plus a handoff packet. Adding one needs no code (ADR-0004). Use {{repo}} and {{project.name}} in the command.' }),
+    h('div', { class: 'form' },
+      h('label', {}, 'Label', labelInput),
+      h('label', {}, 'Launch command', commandInput),
+      h('label', {}, 'Handoff packet', packetSel),
+      h('label', {}, 'Notes', notesInput),
+      h('div', { class: 'detail-actions' }, ...buttons)),
+  );
+}
+
+async function refreshAdapters() {
+  state.adapters = await window.verqury.listAdapters();
+  if (state.mode === 'settings') renderSettingsList();
 }
 
 // Session bootstrapper: pick a packet, preview it rendered for this project,
@@ -600,9 +692,12 @@ function setMode(mode) {
   } else if (mode === 'inbox') {
     renderInboxList();
     detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select an artifact, or press Ctrl+Alt+C to capture.' }));
-  } else {
+  } else if (mode === 'tasks') {
     renderTaskList();
     detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select a task, or create a new one.' }));
+  } else {
+    renderSettingsList();
+    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select or add an adapter (an AI surface).' }));
   }
 }
 
@@ -617,7 +712,8 @@ searchEl.addEventListener('input', () => {
       if (state.mode === 'projects') return renderProjectList();
       if (state.mode === 'guidance') return renderGuidanceList();
       if (state.mode === 'inbox') return renderInboxList();
-      return renderTaskList();
+      if (state.mode === 'tasks') return renderTaskList();
+      return renderSettingsList();
     }
     renderSearchResults(await window.verqury.search(q));
   }, 180);
@@ -628,6 +724,7 @@ async function refreshAll() {
   await refreshGuidance();
   await refreshInbox();
   await refreshTasks();
+  await refreshAdapters();
 }
 
 async function init() {
@@ -640,6 +737,7 @@ async function init() {
   state.guidance = await window.verqury.listAllGuidance();
   state.artifacts = await window.verqury.listArtifacts({});
   state.tasks = await window.verqury.listTasks({});
+  state.adapters = await window.verqury.listAdapters();
   state.captureTarget = (await window.verqury.getActiveProject()) || (state.projects[0]?.slug ?? null);
   renderProjectList();
   if (state.projects.length) await selectProject(state.projects[0].slug);

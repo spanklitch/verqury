@@ -43,6 +43,12 @@ contextBridge.exposeInMainWorld('verqury', {
   handoffTask: (projectSlug, id) => ipcRenderer.invoke('task:handoff', projectSlug, id),
   attachReport: (projectSlug, id, artifactId) => ipcRenderer.invoke('task:attachReport', projectSlug, id, artifactId),
 
+  listAdapters: () => ipcRenderer.invoke('adapters:list'),
+  addAdapter: (adapter) => ipcRenderer.invoke('adapter:add', adapter),
+  updateAdapter: (slug, patch) => ipcRenderer.invoke('adapter:update', slug, patch),
+  removeAdapter: (slug) => ipcRenderer.invoke('adapter:remove', slug),
+  launchAdapter: (adapterSlug, projectSlug) => ipcRenderer.invoke('adapter:launch', adapterSlug, projectSlug),
+
   onDataChanged: (cb) => ipcRenderer.on('data:changed', () => cb()),
   onArtifactCaptured: (cb) => ipcRenderer.on('artifact:captured', (_e, info) => cb(info)),
 });

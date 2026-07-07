@@ -36,6 +36,12 @@ import {
   deleteTask as coreDeleteTask,
   renderHandoff as coreRenderHandoff,
   attachReport as coreAttachReport,
+  listAdapters,
+  getAdapter,
+  addAdapter,
+  updateAdapter as coreUpdateAdapter,
+  removeAdapter as coreRemoveAdapter,
+  resolveCommand,
   STAGES,
   GUIDANCE_KINDS,
   ARTIFACT_KINDS,
@@ -170,6 +176,30 @@ export function renderHandoff(root, projectSlug, id) {
 
 export function attachReport(root, projectSlug, id, artifactId) {
   return coreAttachReport(root, projectSlug, id, artifactId);
+}
+
+export function getAdapters(root) {
+  return listAdapters(root);
+}
+
+export function getOneAdapter(root, slug) {
+  return getAdapter(root, slug);
+}
+
+export function createAdapter(root, adapter) {
+  return addAdapter(root, adapter);
+}
+
+export function updateAdapter(root, slug, patch) {
+  return coreUpdateAdapter(root, slug, patch);
+}
+
+export function removeAdapter(root, slug) {
+  return coreRemoveAdapter(root, slug);
+}
+
+export function resolveAdapterCommand(command, project) {
+  return resolveCommand(command, project);
 }
 
 // The clipboard-capture path, shared by the global hotkey. `readClipboard` is

@@ -80,3 +80,12 @@ Tasks tab, route-laned list, detail with status/route + Hand-off (payload→clip
 Attach-report (artifact picker → done). 44 tests green; harness proves the full done-when
 loop (taskHandoffClipboard/taskHandedOff/taskClosed/taskEchoedInTimeline/taskCards). Board
 = route-grouped sidebar sections (not horizontal kanban) — fits 2-pane layout.
+
+### 2026-07-07 — Phase 7
+Adapter registry (ADR-0004 concrete). Core adapters.js: config-only surfaces
+{slug,label,command,packet,notes}, CRUD over config.json, resolveCommand, 4 starters seeded
+once (config.adaptersSeeded flag). adapter list CLI. App: Settings tab (⚙) CRUD form +
+per-project launch buttons; adapter:launch renders handoff packet→clipboard then spawns the
+substituted command detached (shell:true,unref). 47 tests green; harness proves done-when
+via the settings FORM (adapterCards=5, adapterLaunched, adapterHandoffCopied) + full P2–6
+regression. Gotcha: config.json not watched → settings UI self-refreshes (eng-notes §3).
