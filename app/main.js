@@ -1,7 +1,7 @@
 // Electron main: the thin shell around verqury-core (ADR-0002, ADR-0003).
 // All real logic lives in ./src/api.js and ./src/watcher.js so it stays testable
 // without launching Electron. This file only wires: window, tray, IPC, watcher.
-import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage } from 'electron';
+import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, clipboard, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,6 +42,17 @@ function setupIpc() {
   ipcMain.handle('project:get', (_e, slug) => api.getProject(root, slug));
   ipcMain.handle('project:setStage', (_e, slug, stage) => api.changeStage(root, slug, stage));
   ipcMain.handle('search:query', (_e, query) => api.runSearch(root, query));
+
+  ipcMain.handle('guidance:kinds', () => api.getGuidanceKinds());
+  ipcMain.handle('guidance:all', () => api.getAllGuidance(root));
+  ipcMain.handle('guidance:get', (_e, scope, slug) => api.getGuidance(root, scope, slug));
+  ipcMain.handle('guidance:create', (_e, payload) => api.createGuidance(root, payload));
+  ipcMain.handle('guidance:promote', (_e, projectSlug, slug) => api.promoteGuidance(root, projectSlug, slug));
+
+  ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(String(text ?? '')));
+  ipcMain.handle('shell:openExternal', (_e, url) => {
+    if (/^https?:\/\//.test(String(url))) shell.openExternal(url);
+  });
 }
 
 function setupWatcher() {
@@ -98,6 +109,28 @@ async function runVerify(outDir) {
     await wait(300);
     const fm = fs.readFileSync(path.join(root, 'projects', slug, 'project.md'), 'utf8');
     result.stageChange = { slug, wroteTestStage: /stage:\s*test/.test(fm) };
+
+    // (3) guidance mode: markdown renders to HTML in the DOM.
+    await dom("document.querySelector('.tab[data-mode=guidance]').click()");
+    await wait(200);
+    result.guidanceCards = await dom("document.querySelectorAll('#list .project-card').length");
+    await dom("document.querySelector('#list .project-card')?.click()");
+    await wait(200);
+    result.markdownRendered = await dom("!!document.querySelector('.markdown h1')");
+
+    // (4) create a project instruction through the bridge → valid file on disk.
+    await dom(
+      `window.verqury.createGuidance({ scope: ${JSON.stringify(slug)}, title: 'Harness Instruction', kind: 'instruction', body: '# Harness Instruction\\n\\n- do the thing\\n' })`,
+    );
+    await wait(200);
+    const created = path.join(root, 'projects', slug, 'guidance', 'harness-instruction.md');
+    result.guidanceCreated = fs.existsSync(created);
+
+    // (5) promote it to global through the bridge → file moves.
+    await dom(`window.verqury.promoteGuidance(${JSON.stringify(slug)}, 'harness-instruction')`);
+    await wait(200);
+    result.guidancePromoted =
+      fs.existsSync(path.join(root, 'guidance', 'harness-instruction.md')) && !fs.existsSync(created);
 
     const image = await win.webContents.capturePage();
     const png = image.toPNG();

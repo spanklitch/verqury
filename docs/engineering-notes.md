@@ -68,6 +68,14 @@ and writes `verify.json` (+ `shot.png`).
 `renderer/assets/icon.png` and wrap tray creation in try/catch (non-fatal — the window
 is the deliverable).
 
+**Renderer is an ES module.** `index.html` loads `renderer.js` with `type="module"` so
+it can `import` the tested `app/src/markdown.js`. Cross-directory file:// module imports
+work under the `default-src 'self'` CSP. The markdown renderer is intentionally minimal
+(ADR-0005) and HTML-escapes all input, so guidance/narrative content can't inject markup;
+rendered links are routed through `shell.openExternal` (http/https only) via the preload
+bridge rather than navigating the window. Clipboard writes also go through the bridge
+(Electron `clipboard`), not renderer `navigator.clipboard` — reliable under sandbox.
+
 ## 4. Packaging & distribution
 
 <!-- electron-builder AppImage/.deb notes land in Phase 8. -->

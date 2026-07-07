@@ -44,3 +44,12 @@ Testable logic in app/src/{api,watcher}.js. **ADR-0006: search runs out-of-proce
 Deps: electron 41, chokidar 5. 23 tests green. Both done-when criteria proven in the
 running app via the VERQURY_VERIFY harness (live update 2→3; stage change persisted).
 Engineering gotchas (execPath vs node, ESM/CJS, capturePage) in engineering-notes §3.
+
+### 2026-07-07 — Phase 3
+Guidance library: Projects/Guidance tabs, scoped guidance browsing, markdown preview,
+copy-to-clipboard, new-from-template, promote-to-global. Core: listAllGuidance,
+promoteGuidance + CLI. In-house dependency-free markdown renderer (app/src/markdown.js,
+HTML-escaped; ADR-0005) — also upgrades narrative. Clipboard/external-links via preload
+bridge. Renderer is now an ES module. 29 tests green; all done-when proven via harness
+(markdownRendered / guidanceCreated / guidancePromoted true) + FTS-findable. Details in
+PROGRESS.md; renderer notes in engineering-notes §3.

@@ -9,5 +9,15 @@ contextBridge.exposeInMainWorld('verqury', {
   getProject: (slug) => ipcRenderer.invoke('project:get', slug),
   setStage: (slug, stage) => ipcRenderer.invoke('project:setStage', slug, stage),
   search: (query) => ipcRenderer.invoke('search:query', query),
+
+  guidanceKinds: () => ipcRenderer.invoke('guidance:kinds'),
+  listAllGuidance: () => ipcRenderer.invoke('guidance:all'),
+  getGuidance: (scope, slug) => ipcRenderer.invoke('guidance:get', scope, slug),
+  createGuidance: (payload) => ipcRenderer.invoke('guidance:create', payload),
+  promoteGuidance: (projectSlug, slug) => ipcRenderer.invoke('guidance:promote', projectSlug, slug),
+
+  copyToClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+
   onDataChanged: (cb) => ipcRenderer.on('data:changed', () => cb()),
 });

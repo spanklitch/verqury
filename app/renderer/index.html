@@ -15,6 +15,10 @@
           <div class="brand-tag">Layer, not IDE</div>
         </div>
       </div>
+      <nav class="tabs">
+        <button class="tab active" data-mode="projects">Projects</button>
+        <button class="tab" data-mode="guidance">Guidance</button>
+      </nav>
       <input id="search" class="search" type="search" placeholder="Search projects, guidance, memory…" autocomplete="off" />
       <div id="list" class="list"></div>
     </aside>
@@ -25,6 +29,8 @@
       </div>
     </main>
 
-    <script src="renderer.js"></script>
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="renderer.js"></script>
   </body>
 </html>

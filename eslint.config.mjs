@@ -35,11 +35,11 @@ export default [
     rules: { 'no-undef': 'error' },
   },
   {
-    // Browser renderer
+    // Browser renderer (ES modules)
     files: ['app/renderer/**/*.js'],
     languageOptions: {
       ecmaVersion: 2024,
-      sourceType: 'script',
+      sourceType: 'module',
       globals: {
         window: 'readonly',
         document: 'readonly',

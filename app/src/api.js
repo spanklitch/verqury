@@ -15,7 +15,12 @@ import {
   showProject,
   setStage,
   projectTimeline,
+  addGuidance,
+  listAllGuidance,
+  showGuidance,
+  promoteGuidance as corePromoteGuidance,
   STAGES,
+  GUIDANCE_KINDS,
 } from 'verqury-core/files';
 
 const require = createRequire(import.meta.url);
@@ -45,6 +50,26 @@ export function changeStage(root, slug, stage) {
 
 export function getStages() {
   return STAGES;
+}
+
+export function getGuidanceKinds() {
+  return GUIDANCE_KINDS;
+}
+
+export function getAllGuidance(root) {
+  return listAllGuidance(root);
+}
+
+export function getGuidance(root, scope, slug) {
+  return showGuidance(root, scope, slug);
+}
+
+export function createGuidance(root, payload) {
+  return addGuidance(root, payload);
+}
+
+export function promoteGuidance(root, projectSlug, slug) {
+  return corePromoteGuidance(root, projectSlug, slug);
 }
 
 function cli(root, args) {

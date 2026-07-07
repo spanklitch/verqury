@@ -1,15 +1,24 @@
 // Renderer: vanilla JS over the preload `window.verqury` bridge (ADR-0005).
-// No framework, no direct Node/IPC access. Read-only views + the one bounded
-// mutation this phase allows: changing a project's stage. No body editing —
-// that would drift toward an IDL (anti-goal).
+// Two modes — Projects and Guidance. Read-only views plus the bounded mutations
+// this stage allows: change a project's stage, create guidance, promote guidance.
+// No free-form body editing — that would drift toward an IDE (anti-goal).
+import { renderMarkdown } from '../src/markdown.js';
+
 const el = (sel) => document.querySelector(sel);
 const listEl = el('#list');
 const detailEl = el('#detail');
 const searchEl = el('#search');
+const toastEl = el('#toast');
 
-let stages = [];
-let projects = [];
-let activeSlug = null;
+const state = {
+  mode: 'projects',
+  stages: [],
+  kinds: [],
+  projects: [],
+  guidance: [],
+  activeProject: null,
+  activeGuidance: null, // { scope, slug }
+};
 
 function h(tag, attrs = {}, ...kids) {
   const node = document.createElement(tag);
@@ -17,67 +26,116 @@ function h(tag, attrs = {}, ...kids) {
     if (k === 'class') node.className = v;
     else if (k === 'text') node.textContent = v;
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
+    else if (v != null) node.setAttribute(k, v);
   }
   for (const kid of kids) if (kid != null) node.append(kid);
   return node;
 }
 
+let toastTimer = null;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toastEl.hidden = true), 1500);
+}
+
+// Render markdown into a container and route external links through the shell.
+function markdownInto(container, src) {
+  container.innerHTML = renderMarkdown(src);
+  for (const a of container.querySelectorAll('a[href]')) {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.verqury.openExternal(a.getAttribute('href'));
+    });
+  }
+}
+
+/* ---------- sidebar lists ---------- */
+
 function renderProjectList() {
-  listEl.replaceChildren();
-  listEl.append(h('div', { class: 'section-label', text: 'Projects' }));
-  if (!projects.length) {
+  listEl.replaceChildren(h('div', { class: 'section-label', text: 'Projects' }));
+  if (!state.projects.length) {
     listEl.append(h('div', { class: 'project-card', text: 'No projects yet.' }));
     return;
   }
-  for (const p of projects) {
-    const card = h(
-      'div',
-      { class: `project-card${p.slug === activeSlug ? ' active' : ''}`, onclick: () => selectProject(p.slug) },
-      h('div', { class: 'name', text: p.name }),
-      h('div', { class: 'card-meta' },
-        h('span', { class: 'badge stage', text: p.stage ?? '—' }),
-        h('span', { class: 'badge', text: p.status ?? '—' })),
+  for (const p of state.projects) {
+    listEl.append(
+      h('div', { class: `project-card${p.slug === state.activeProject ? ' active' : ''}`, onclick: () => selectProject(p.slug) },
+        h('div', { class: 'name', text: p.name }),
+        h('div', { class: 'card-meta' },
+          h('span', { class: 'badge stage', text: p.stage ?? '—' }),
+          h('span', { class: 'badge', text: p.status ?? '—' }))),
     );
-    listEl.append(card);
+  }
+}
+
+function renderGuidanceList() {
+  listEl.replaceChildren(h('button', { class: 'btn wide', onclick: showNewGuidanceForm }, '＋ New guidance'));
+  const scopes = [...new Set(state.guidance.map((g) => g.scope))].sort((a, b) =>
+    a === 'global' ? -1 : b === 'global' ? 1 : a.localeCompare(b));
+  if (!state.guidance.length) {
+    listEl.append(h('div', { class: 'project-card', text: 'No guidance yet.' }));
+    return;
+  }
+  for (const scope of scopes) {
+    listEl.append(h('div', { class: 'section-label', text: scope === 'global' ? 'Global' : scope }));
+    for (const g of state.guidance.filter((x) => x.scope === scope)) {
+      const active = state.activeGuidance && state.activeGuidance.scope === g.scope && state.activeGuidance.slug === g.slug;
+      listEl.append(
+        h('div', { class: `project-card${active ? ' active' : ''}`, onclick: () => selectGuidance(g.scope, g.slug) },
+          h('div', { class: 'name', text: g.title }),
+          h('div', { class: 'card-meta' }, h('span', { class: 'badge kind', text: g.kind ?? '—' }))),
+      );
+    }
   }
 }
 
 function renderSearchResults(hits) {
-  listEl.replaceChildren();
-  listEl.append(h('div', { class: 'section-label', text: `Results (${hits.length})` }));
+  listEl.replaceChildren(h('div', { class: 'section-label', text: `Results (${hits.length})` }));
   for (const hit of hits) {
     const where = hit.project ? `${hit.type} · ${hit.project}` : hit.type;
-    const card = h(
-      'div',
-      { class: 'result-card', onclick: () => hit.project && selectProject(hit.project) },
-      h('div', { class: 'name', text: hit.title }),
-      h('div', { class: 'where', text: where }),
+    listEl.append(
+      h('div', { class: 'result-card', onclick: () => openHit(hit) },
+        h('div', { class: 'name', text: hit.title }),
+        h('div', { class: 'where', text: where })),
     );
-    listEl.append(card);
   }
 }
 
-function renderDetail(project, timeline) {
+function openHit(hit) {
+  if (hit.type === 'guidance') {
+    setMode('guidance');
+    selectGuidance(hit.project || 'global', hit.title);
+  } else if (hit.project) {
+    setMode('projects');
+    selectProject(hit.project);
+  }
+}
+
+/* ---------- detail panes ---------- */
+
+function renderProjectDetail(project, timeline) {
   const select = h('select', { class: 'stage-select', onchange: (e) => onStageChange(e.target.value) });
-  for (const s of stages) {
+  for (const s of state.stages) {
     const opt = h('option', { value: s, text: s });
     if (s === project.stage) opt.selected = true;
     select.append(opt);
   }
 
-  const sub = h('div', { class: 'detail-sub' });
-  sub.append(document.createTextNode(`status: ${project.status ?? '—'} · created ${project.created ?? '—'}`));
+  const sub = h('div', { class: 'detail-sub' },
+    document.createTextNode(`status: ${project.status ?? '—'} · created ${project.created ?? '—'}`));
   if (project.repo) sub.append(document.createTextNode(` · repo: ${project.repo}`));
   for (const link of project.links ?? []) {
     sub.append(document.createTextNode(' · '));
-    sub.append(h('a', { href: link.url, text: link.label }));
+    sub.append(h('a', { href: link.url, onclick: (e) => { e.preventDefault(); window.verqury.openExternal(link.url); }, text: link.label }));
   }
 
+  const narrative = h('div', { class: 'markdown' });
+  markdownInto(narrative, project.body ?? '');
+
   const timelineEl = h('div', { class: 'timeline' }, h('h2', { text: 'Memory timeline' }));
-  if (!timeline.length) {
-    timelineEl.append(h('div', { class: 'detail-sub', text: 'No log entries or decisions yet.' }));
-  }
+  if (!timeline.length) timelineEl.append(h('div', { class: 'detail-sub', text: 'No log entries or decisions yet.' }));
   for (const entry of timeline) {
     const kind = entry.type === 'decision' ? `decision #${entry.number}` : 'log';
     const preview = (entry.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 160);
@@ -85,60 +143,189 @@ function renderDetail(project, timeline) {
       h('div', { class: 'timeline-entry' },
         h('div', { class: 'when', text: entry.date ?? '' }),
         h('div', { class: 'what' },
-          h('div', {},
-            h('span', { class: 'kind', text: kind }),
-            document.createTextNode(entry.title ?? '')),
+          h('div', {}, h('span', { class: 'kind', text: kind }), document.createTextNode(entry.title ?? '')),
           preview ? h('div', { class: 'body', text: preview }) : null)),
     );
   }
 
   detailEl.replaceChildren(
     h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: project.name }), select),
-    sub,
-    h('div', { class: 'narrative', text: (project.body ?? '').trim() }),
-    timelineEl,
+    sub, narrative, timelineEl,
   );
 }
 
+function renderGuidanceDetail(g) {
+  const actions = h('div', { class: 'detail-actions' },
+    h('button', { class: 'btn', onclick: () => { window.verqury.copyToClipboard(g.body ?? ''); toast('Copied to clipboard'); } }, 'Copy'));
+  if (g.scope !== 'global') {
+    actions.append(h('button', { class: 'btn primary', onclick: () => onPromote(g.scope, g.slug) }, 'Promote to global'));
+  }
+
+  const meta = h('div', { class: 'detail-sub' },
+    h('span', { class: 'badge kind', text: g.kind ?? '—' }),
+    document.createTextNode(`  ${g.scope === 'global' ? 'global' : `project · ${g.scope}`}`));
+  for (const t of g.tags ?? []) meta.append(h('span', { class: 'badge', text: t }));
+
+  const body = h('div', { class: 'markdown' });
+  markdownInto(body, g.body ?? '');
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: g.title })),
+    meta, actions, body,
+  );
+}
+
+function scaffold(kind, title) {
+  const t = title || 'Untitled';
+  if (kind === 'skill') return `# ${t}\n\n## When to use\n\n## How it works\n`;
+  if (kind === 'standard') return `# ${t}\n\n## Rule\n\n## Rationale\n`;
+  if (kind === 'instruction') return `# ${t}\n\n- \n`;
+  return `# ${t}\n`;
+}
+
+function showNewGuidanceForm() {
+  state.activeGuidance = null;
+  const titleInput = h('input', { type: 'text', placeholder: 'Guidance title', oninput: syncScaffold });
+  const kindSelect = h('select', { onchange: syncScaffold });
+  for (const k of state.kinds) kindSelect.append(h('option', { value: k, text: k }));
+  const scopeSelect = h('select', {});
+  scopeSelect.append(h('option', { value: 'global', text: 'Global' }));
+  for (const p of state.projects) scopeSelect.append(h('option', { value: p.slug, text: `Project · ${p.name}` }));
+  const bodyArea = h('textarea', { spellcheck: 'false' });
+  bodyArea.value = scaffold(state.kinds[0], '');
+  let bodyTouched = false;
+  bodyArea.addEventListener('input', () => (bodyTouched = true));
+  function syncScaffold() {
+    if (!bodyTouched) bodyArea.value = scaffold(kindSelect.value, titleInput.value);
+  }
+
+  const create = h('button', { class: 'btn primary', onclick: async () => {
+    if (!titleInput.value.trim()) return toast('Title is required');
+    try {
+      const g = await window.verqury.createGuidance({
+        scope: scopeSelect.value, title: titleInput.value.trim(), kind: kindSelect.value, body: bodyArea.value,
+      });
+      await refreshGuidance();
+      selectGuidance(g.scope, g.slug);
+      toast('Guidance created');
+    } catch (err) { toast(err.message); }
+  } }, 'Create');
+  const cancel = h('button', { class: 'btn', onclick: () => (state.projects.length || state.guidance.length ? renderActive() : detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select guidance.' }))) }, 'Cancel');
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: 'New guidance' })),
+    h('div', { class: 'form' },
+      h('label', {}, 'Title', titleInput),
+      h('div', { class: 'form-row' }, h('label', {}, 'Kind', kindSelect), h('label', {}, 'Scope', scopeSelect)),
+      h('label', {}, 'Body', bodyArea),
+      h('div', { class: 'detail-actions' }, create, cancel)),
+  );
+}
+
+/* ---------- actions ---------- */
+
 async function selectProject(slug) {
-  activeSlug = slug;
+  state.activeProject = slug;
   renderProjectList();
   const { project, timeline } = await window.verqury.getProject(slug);
-  renderDetail(project, timeline);
+  renderProjectDetail(project, timeline);
+}
+
+async function selectGuidance(scope, slug) {
+  state.activeGuidance = { scope, slug };
+  renderGuidanceList();
+  try {
+    renderGuidanceDetail(await window.verqury.getGuidance(scope, slug));
+  } catch {
+    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Guidance not found.' }));
+  }
 }
 
 async function onStageChange(stage) {
-  if (!activeSlug) return;
-  await window.verqury.setStage(activeSlug, stage);
-  await refresh();
+  if (!state.activeProject) return;
+  await window.verqury.setStage(state.activeProject, stage);
+  toast(`Stage → ${stage}`);
+  await refreshProjects();
 }
 
-async function refresh() {
-  projects = await window.verqury.listProjects();
-  if (searchEl.value.trim()) return; // don't clobber an active search in the list
-  renderProjectList();
-  if (activeSlug) {
-    const { project, timeline } = await window.verqury.getProject(activeSlug);
-    renderDetail(project, timeline);
+async function onPromote(scope, slug) {
+  try {
+    const g = await window.verqury.promoteGuidance(scope, slug);
+    await refreshGuidance();
+    selectGuidance('global', g.slug);
+    toast('Promoted to global');
+  } catch (err) { toast(err.message); }
+}
+
+/* ---------- refresh / mode ---------- */
+
+async function refreshProjects() {
+  state.projects = await window.verqury.listProjects();
+  if (searchEl.value.trim()) return;
+  if (state.mode === 'projects') {
+    renderProjectList();
+    if (state.activeProject) {
+      const { project, timeline } = await window.verqury.getProject(state.activeProject);
+      renderProjectDetail(project, timeline);
+    }
   }
 }
+
+async function refreshGuidance() {
+  state.guidance = await window.verqury.listAllGuidance();
+  if (searchEl.value.trim()) return;
+  if (state.mode === 'guidance') renderGuidanceList();
+}
+
+function renderActive() {
+  if (state.mode === 'projects') {
+    renderProjectList();
+    if (state.activeProject) selectProject(state.activeProject);
+  } else {
+    renderGuidanceList();
+    if (state.activeGuidance) selectGuidance(state.activeGuidance.scope, state.activeGuidance.slug);
+  }
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  for (const tab of document.querySelectorAll('.tab')) tab.classList.toggle('active', tab.dataset.mode === mode);
+  searchEl.value = '';
+  if (mode === 'projects') {
+    renderProjectList();
+    if (state.activeProject) selectProject(state.activeProject);
+    else detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select a project.' }));
+  } else {
+    renderGuidanceList();
+    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select guidance, or create new.' }));
+  }
+}
+
+for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => setMode(tab.dataset.mode));
 
 let searchTimer = null;
 searchEl.addEventListener('input', () => {
   clearTimeout(searchTimer);
   const q = searchEl.value.trim();
   searchTimer = setTimeout(async () => {
-    if (!q) return renderProjectList();
+    if (!q) return state.mode === 'projects' ? renderProjectList() : renderGuidanceList();
     renderSearchResults(await window.verqury.search(q));
   }, 180);
 });
 
+async function refreshAll() {
+  await refreshProjects();
+  await refreshGuidance();
+}
+
 async function init() {
-  stages = await window.verqury.getStages();
-  projects = await window.verqury.listProjects();
+  state.stages = await window.verqury.getStages();
+  state.kinds = await window.verqury.guidanceKinds();
+  state.projects = await window.verqury.listProjects();
+  state.guidance = await window.verqury.listAllGuidance();
   renderProjectList();
-  if (projects.length) await selectProject(projects[0].slug);
-  window.verqury.onDataChanged(() => refresh());
+  if (state.projects.length) await selectProject(state.projects[0].slug);
+  window.verqury.onDataChanged(() => refreshAll());
   window.__verquryReady = true; // signal for headless verification
 }
 

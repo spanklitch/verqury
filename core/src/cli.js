@@ -29,6 +29,7 @@ const OPTIONS = {
   type: { type: 'string' },
   limit: { type: 'string' },
   json: { type: 'boolean' },
+  all: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
 };
 
@@ -42,8 +43,9 @@ Usage: verqury <command> [args] [--data-root <dir>]
   project show <slug>
   project set-stage <slug> <stage>
   guidance add <title> --kind <k> [--scope global|<project>] [--slug s] [--tag t] [--body text|-]
-  guidance list [--scope global|<project>]
+  guidance list [--scope global|<project>] [--all]
   guidance show <slug> [--scope global|<project>]
+  guidance promote <project> <slug>    Move project guidance to the global library
   log add <project> <text...>          [--title t]  (or --body -/text)
   decision add <project> <title...>    [--body text|-]
   search <query...> [--project s] [--type project|guidance|decision|log] [--limit n] [--json]
@@ -170,9 +172,19 @@ function main() {
         return;
       }
       if (sub === 'list') {
-        const list = guidance.listGuidance(root, { scope: values.scope ?? 'global' });
+        const list = values.all
+          ? guidance.listAllGuidance(root)
+          : guidance.listGuidance(root, { scope: values.scope ?? 'global' });
         if (!list.length) return console.log('(no guidance)');
-        for (const g of list) console.log(`${g.slug}\t${g.kind}\t${g.title}`);
+        for (const g of list) console.log(`${g.scope}\t${g.slug}\t${g.kind}\t${g.title}`);
+        return;
+      }
+      if (sub === 'promote') {
+        const [, , project, slug] = positionals;
+        if (!project || !slug) fail('guidance promote needs <project> <slug>');
+        const g = guidance.promoteGuidance(root, project, slug);
+        afterMutation();
+        console.log(`Promoted to global: ${g.slug}`);
         return;
       }
       if (sub === 'show') {

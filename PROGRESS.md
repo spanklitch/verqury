@@ -9,7 +9,7 @@ verify success criteria, update this file.
 - [x] **Phase 0 — Repo init & scaffolding** (2026-07-06)
 - [x] **Phase 1 — verqury-core: data layer + CLI** (2026-07-07)
 - [x] **Phase 2 — Electron shell + project views** (2026-07-07)
-- [ ] **Phase 3 — Guidance library**
+- [x] **Phase 3 — Guidance library** (2026-07-07)
 - [ ] **Phase 4 — Artifact inbox + clipboard capture**
 - [ ] **Phase 5 — Session bootstrapper**
 - [ ] **Phase 6 — Task router**
@@ -133,3 +133,37 @@ explicitly owns "markdown preview").
 **Next session:** Phase 3 — Guidance library (plan §5 Phase 3): browse/search global +
 project guidance, markdown preview, copy-to-clipboard, new-from-template, promote-to-
 global. Good place to add a small markdown renderer for narrative + guidance preview.
+
+### 2026-07-07 — Phase 3 (session 4, Opus)
+**Shipped:** Guidance library. Sidebar Projects/Guidance tabs; guidance list grouped by
+scope (Global + per project); detail with kind/scope/tags, rendered markdown, Copy, and
+Promote-to-global (project-scoped only); New-guidance form (title, kind, scope, kind-aware
+body scaffold). Core: `listAllGuidance`, `promoteGuidance` + `guidance promote` /
+`guidance list --all` CLI. New dependency-free markdown renderer `app/src/markdown.js`
+(headings/emphasis/code/fences/lists/links/hr/blockquote, HTML-escaped) — also upgrades
+the project narrative from plain text. Clipboard + external links routed through the
+preload bridge (Electron `clipboard`/`shell`). Renderer converted to an ES module to
+import the markdown module.
+
+**Verified:**
+- 29 tests green (20 core incl. promote/listAll; 9 app incl. 4 markdown cases covering
+  HTML-escape + unsafe-link rejection). Lint clean.
+- VERQURY_VERIFY harness (extended) against a seeded root: guidanceCards=2,
+  **markdownRendered=true** (`.markdown h1` in DOM), **guidanceCreated=true** (created via
+  UI bridge → valid file on disk — done-when #1), **guidancePromoted=true** (project→global
+  file move — done-when #2). Plus a search confirmed promoted guidance is FTS-findable
+  (done-when #3). Phase 2 checks still pass. Screenshot confirmed (grouped list + rendered
+  markdown with heading/list/inline-code/link).
+
+**Deviations:** none. Markdown renderer is intentionally minimal per ADR-0005 (no vendored
+lib); covers what guidance/narrative files use. No new ADR (this follows ADR-0005, not a
+reversal).
+
+**Not done (deliberate):** no guidance editing of existing bodies in-app (create-only +
+promote; editing free-form bodies would drift toward an IDE — anti-goal). Real markdown
+edge cases (tables, nested lists) not handled — add only if a guidance file needs them.
+
+**Next session:** Phase 4 — Artifact inbox + clipboard capture (plan §5 Phase 4; the
+riskiest OS integration). Global hotkey Ctrl+Alt+C → capture clipboard into the active
+project's artifacts; kind auto-guess; inbox view. ULID generation lands here (deferred
+from Phase 1). Clipboard READ needed (Phase 3 added clipboard write via the bridge).

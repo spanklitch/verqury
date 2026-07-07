@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restart. Vanilla renderer over a sandboxed preload bridge.
 - Core: `projectTimeline` / `listLog` / `listDecisions` readers; a native-free
   `verqury-core/files` entry point; `search --json` and `timeline` CLI output.
+- Guidance library: a Guidance tab browsing global + per-project guidance,
+  markdown preview, copy-to-clipboard, new-from-template (kind-aware scaffold),
+  and promote-to-global. Core gains `listAllGuidance` / `promoteGuidance` and
+  `guidance promote` / `guidance list --all` CLI. A small dependency-free
+  markdown renderer (also upgrades the project narrative from plain text).
 
 ### Changed
 - Renamed product Velora → **Verqury** (prior name in use by another company);
