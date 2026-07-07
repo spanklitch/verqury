@@ -1,0 +1,19 @@
+# Architecture Decision Records
+
+This directory records the significant decisions behind Velora — the *why*, not just the
+*what*. Each record is a short, immutable note: the context at the time, the decision taken,
+and the consequences accepted. When a decision is reversed, we don't edit the old record — we
+add a new one that supersedes it, so the reasoning trail stays intact.
+
+Format follows [Michael Nygard's ADR pattern](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions).
+New records start from [`0000-template.md`](0000-template.md) and take the next number.
+
+## Index
+
+| # | Decision | Status |
+|---|---|---|
+| [0001](0001-files-are-the-database.md) | Files are the database; SQLite is a rebuildable index | Accepted |
+| [0002](0002-core-library-plus-cli-electron-shell.md) | Core logic is a plain Node library + CLI; Electron is a shell | Accepted |
+| [0003](0003-electron-for-desktop-shell.md) | Electron for the desktop shell | Accepted |
+| [0004](0004-adapters-are-launch-handoff-config.md) | Adapters are launch/handoff config, not API integrations | Accepted |
+| [0005](0005-vanilla-frontend.md) | Vanilla-leaning frontend, no framework | Accepted |

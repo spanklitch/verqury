@@ -1,0 +1,17 @@
+{
+  "name": "velora",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Velora — layer, not IDE. A low-friction desktop companion for AI-assisted product development.",
+  "workspaces": [
+    "core",
+    "app"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
+  }
+}

@@ -1,0 +1,19 @@
+# Secrets — never committed
+.env
+*.p8
+*.pem
+*.key
+
+# Dependencies & build output
+node_modules/
+dist/
+build/
+out/
+
+# Rebuildable index / local data (ADR-0001: files are the database, index is cache)
+*.sqlite
+*.sqlite-journal
+
+# Noise
+*.log
+.DS_Store

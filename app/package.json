@@ -1,0 +1,9 @@
+{
+  "name": "velora-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Velora Electron shell — lands in Phase 2",
+  "dependencies": {
+    "velora-core": "*"
+  }
+}
