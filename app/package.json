@@ -2,8 +2,18 @@
   "name": "verqury-app",
   "version": "0.0.0",
   "private": true,
-  "description": "Verqury Electron shell — lands in Phase 2",
+  "description": "Verqury Electron shell — workflow layer over AI-assisted product development",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/"
+  },
   "dependencies": {
+    "chokidar": "^5.0.0",
     "verqury-core": "*"
+  },
+  "devDependencies": {
+    "electron": "^41.7.1"
   }
 }

@@ -16,7 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decisions), and a rebuildable SQLite FTS5 search index (build / incremental
   refresh / search / full rebuild).
 - `verqury` CLI over the core library: `init`, `project`, `guidance`, `log`,
-  `decision`, `search`, `index`, `config` commands.
+  `decision`, `search`, `index`, `config`, `timeline` commands.
+- Electron desktop shell: project list (stage/status badges), project detail
+  (narrative + stage control + merged log/decision timeline), global search,
+  system tray, and a live file watcher so terminal-side edits appear without a
+  restart. Vanilla renderer over a sandboxed preload bridge.
+- Core: `projectTimeline` / `listLog` / `listDecisions` readers; a native-free
+  `verqury-core/files` entry point; `search --json` and `timeline` CLI output.
 
 ### Changed
 - Renamed product Velora → **Verqury** (prior name in use by another company);

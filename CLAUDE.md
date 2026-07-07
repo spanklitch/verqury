@@ -35,3 +35,12 @@ Deps: better-sqlite3, gray-matter. 17 tests green. Deferred ULID→Phase 4 and
 chokidar→Phase 2 (no Phase-1 consumer). Domain = pure file I/O; CLI refreshes the
 index after mutations. FTS5 = delete+insert on mtime change (no UPDATE) — see
 docs/engineering-notes.md §2. Details in PROGRESS.md session log.
+
+### 2026-07-07 — Phase 2
+Electron shell (app/): main.js (ESM) + preload.cjs + vanilla renderer; project list,
+detail (narrative + stage control + memory timeline), search, tray, live file watcher.
+Testable logic in app/src/{api,watcher}.js. **ADR-0006: search runs out-of-process
+(system `node` + CLI), so Electron never loads better-sqlite3 → NO electron-rebuild.**
+Deps: electron 41, chokidar 5. 23 tests green. Both done-when criteria proven in the
+running app via the VERQURY_VERIFY harness (live update 2→3; stage change persisted).
+Engineering gotchas (execPath vs node, ESM/CJS, capturePage) in engineering-notes §3.

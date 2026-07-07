@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { projectPaths } from './paths.js';
-import { writeDoc } from './frontmatter.js';
+import { readDoc, writeDoc } from './frontmatter.js';
 import { slugify } from './slug.js';
 import { DECISION_STATUSES, assertEnum, today } from './schema.js';
 
@@ -46,4 +46,44 @@ export function addDecision(root, projectSlug, { title, body = '', status = 'acc
   const data = { number: next, title, date: today(), status, kind: 'decision' };
   writeDoc(file, data, body || '## Context\n\n## Decision\n\n## Consequences\n');
   return { project: projectSlug, number: next, title, path: file };
+}
+
+export function listLog(root, projectSlug) {
+  const p = ensureProject(root, projectSlug);
+  if (!fs.existsSync(p.log)) return [];
+  return fs.readdirSync(p.log)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => {
+      const file = path.join(p.log, f);
+      const { data, body } = readDoc(file);
+      return { type: 'log', date: data.date ?? f.slice(0, 10), title: data.title ?? null, body, path: file };
+    });
+}
+
+export function listDecisions(root, projectSlug) {
+  const p = ensureProject(root, projectSlug);
+  if (!fs.existsSync(p.decisions)) return [];
+  return fs.readdirSync(p.decisions)
+    .filter((f) => /^\d+-/.test(f) && f.endsWith('.md'))
+    .map((f) => {
+      const file = path.join(p.decisions, f);
+      const { data, body } = readDoc(file);
+      return {
+        type: 'decision',
+        number: data.number ?? parseInt(f, 10),
+        date: data.date ?? null,
+        title: data.title ?? f,
+        status: data.status ?? null,
+        body,
+        path: file,
+      };
+    });
+}
+
+// Log entries and decisions merged newest-first for the project detail view.
+export function projectTimeline(root, projectSlug) {
+  return [...listLog(root, projectSlug), ...listDecisions(root, projectSlug)].sort((a, b) => {
+    const byDate = String(b.date ?? '').localeCompare(String(a.date ?? ''));
+    return byDate !== 0 ? byDate : String(b.path).localeCompare(String(a.path));
+  });
 }

@@ -8,7 +8,7 @@ verify success criteria, update this file.
 
 - [x] **Phase 0 — Repo init & scaffolding** (2026-07-06)
 - [x] **Phase 1 — verqury-core: data layer + CLI** (2026-07-07)
-- [ ] **Phase 2 — Electron shell + project views**
+- [x] **Phase 2 — Electron shell + project views** (2026-07-07)
 - [ ] **Phase 3 — Guidance library**
 - [ ] **Phase 4 — Artifact inbox + clipboard capture**
 - [ ] **Phase 5 — Session bootstrapper**
@@ -92,3 +92,44 @@ have no commands yet (their phases: 4/6/5). No Electron. No push yet — awaits 
 
 **Next session:** Phase 2 — Electron shell + project views (plan §5 Phase 2). First
 Electron install; budget time for better-sqlite3 electron-rebuild (plan §6).
+
+### 2026-07-07 — Phase 2 (session 3, Opus)
+**Shipped:** Electron shell (`app/`). `main.js` (ESM: window + tray + IPC + watcher),
+`preload.cjs` (sandboxed contextBridge), vanilla renderer (`renderer/`: sidebar with
+search + project list, detail pane with narrative + stage dropdown + merged memory
+timeline; theme-aware light/dark CSS). Testable headless logic split into
+`app/src/api.js` + `app/src/watcher.js`. Core additions: `listLog`/`listDecisions`/
+`projectTimeline` readers, native-free `verqury-core/files` barrel + `exports` map,
+`search --json` + `timeline` CLI. Deps: electron 41, chokidar 5. Generated
+`renderer/assets/icon.png` (violet placeholder; real branding → Phase 8).
+
+**Verified:**
+- 23 tests green (18 core + 5 app: api, watcher/live-fire, search-subprocess), lint clean.
+- Ran the actual Electron app headlessly via a `VERQURY_VERIFY` harness against a
+  seeded root (Mebit + ZAGNALS). `verify.json`: 2 project cards rendered, detail title
+  "Mebit", **liveUpdate before=2 after=3 passed=true** (a log written on disk appeared
+  in the running app's timeline within 2s — done-when #1), **stageChange
+  wroteTestStage=true** (stage set via the UI bridge persisted to project.md —
+  done-when #2). Screenshot captured and visually confirmed (brand, badges, timeline,
+  stage dropdown all correct).
+
+**KEY DECISION — ADR-0006 (search runs out-of-process):** Electron never loads
+better-sqlite3, so **no electron-rebuild needed at all** (the plan §6 budget item is
+moot). App reads files in-process via `verqury-core/files` (no native dep); search
+shells out to the **system `node`** running the CLI (ABI-matched to better-sqlite3).
+better-sqlite3 stays system-ABI, so CLI + `npm test` never break. Trade-off: running
+app needs `node` on PATH for search — Phase 8 packaging resolves (bundle node, or
+rebuild for Electron). Details + Electron ESM/CJS, chokidar v5, tray, capturePage
+gotchas in docs/engineering-notes.md §3.
+
+**Deviations from plan:** search subprocess instead of in-process sqlite + electron-
+rebuild (ADR-0006 — simpler, avoids the fragile dual-ABI dance). Markdown narrative
+shown as plain text this phase; real markdown rendering deferred to Phase 3 (which
+explicitly owns "markdown preview").
+
+**Not done (deliberate):** no clipboard/hotkey (Phase 4), no guidance library UI
+(Phase 3). Tray uses a placeholder icon. No push yet — awaits Gary.
+
+**Next session:** Phase 3 — Guidance library (plan §5 Phase 3): browse/search global +
+project guidance, markdown preview, copy-to-clipboard, new-from-template, promote-to-
+global. Good place to add a small markdown renderer for narrative + guidance preview.

@@ -28,6 +28,7 @@ const OPTIONS = {
   project: { type: 'string' },
   type: { type: 'string' },
   limit: { type: 'string' },
+  json: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
 };
 
@@ -45,7 +46,8 @@ Usage: verqury <command> [args] [--data-root <dir>]
   guidance show <slug> [--scope global|<project>]
   log add <project> <text...>          [--title t]  (or --body -/text)
   decision add <project> <title...>    [--body text|-]
-  search <query...> [--project s] [--type project|guidance|decision|log] [--limit n]
+  search <query...> [--project s] [--type project|guidance|decision|log] [--limit n] [--json]
+  timeline <project>                   Log + decisions, newest first
   index rebuild | refresh
   config show
 
@@ -215,12 +217,26 @@ function main() {
         type: values.type,
         limit: values.limit ? Number(values.limit) : undefined,
       });
+      if (values.json) return void console.log(JSON.stringify(hits));
       if (!hits.length) return console.log('(no matches)');
       for (const h of hits) {
         const where = h.project ? `${h.type}/${h.project}` : h.type;
         console.log(`${where}\t${h.title}`);
         console.log(`  ${h.snippet.replace(/\s+/g, ' ').trim()}`);
         console.log(`  ${h.path}`);
+      }
+      return;
+    }
+
+    case 'timeline': {
+      const project = positionals[1];
+      if (!project) fail('timeline needs a <project>');
+      const entries = memory.projectTimeline(root, project);
+      if (values.json) return void console.log(JSON.stringify(entries));
+      if (!entries.length) return console.log('(no memory yet)');
+      for (const e of entries) {
+        const label = e.type === 'decision' ? `decision #${e.number}` : 'log';
+        console.log(`${e.date}\t${label}\t${e.title ?? ''}`);
       }
       return;
     }

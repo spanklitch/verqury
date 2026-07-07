@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tmpRoot } from './helpers.js';
 import { createProject } from '../src/projects.js';
-import { addLog, addDecision } from '../src/memory.js';
+import { addLog, addDecision, listLog, listDecisions, projectTimeline } from '../src/memory.js';
 
 test('addLog writes a dated file scoped to the project', () => {
   const root = tmpRoot();
@@ -22,4 +22,20 @@ test('addDecision assigns incrementing zero-padded numbers', () => {
   assert.equal(d2.number, 2);
   assert.match(d2.path, /002-use-electron\.md$/);
   assert.throws(() => addDecision(root, 'm', { title: 'Bad', status: 'nope' }), /Invalid decision status/);
+});
+
+test('projectTimeline merges logs and decisions newest-first', () => {
+  const root = tmpRoot();
+  createProject(root, { name: 'M' });
+  addLog(root, 'm', { text: 'first', title: 'One' });
+  addDecision(root, 'm', { title: 'A Decision' });
+
+  assert.equal(listLog(root, 'm').length, 1);
+  assert.equal(listDecisions(root, 'm').length, 1);
+
+  const tl = projectTimeline(root, 'm');
+  assert.equal(tl.length, 2);
+  assert.ok(tl.every((e) => e.type === 'log' || e.type === 'decision'));
+  // same-date tiebreak is deterministic (path desc), so order is stable
+  assert.deepEqual(projectTimeline(root, 'm').map((e) => e.path), tl.map((e) => e.path));
 });

@@ -38,8 +38,35 @@ repo anyway; this is defensive).
 
 ## 3. Electron shell & OS integration
 
-<!-- Expected hot spots (plan §6): better-sqlite3 electron-rebuild incantation,
-     X11 global hotkey and clipboard-polling gotchas. Record them when hit. -->
+**No electron-rebuild — by design.** We sidestepped the native-module ABI problem
+entirely: Electron never loads `better-sqlite3`. See [ADR-0006](adr/0006-search-runs-out-of-process.md).
+Search shells out to the system `node` running the CLI. If you ever move sqlite
+in-process, *that* is when the `@electron/rebuild` dance returns.
+
+**Search subprocess must spawn the system `node`, not `process.execPath`.** Under
+Electron, `process.execPath` is the Electron binary; running it (even with
+`ELECTRON_RUN_AS_NODE=1`) uses Electron's Node ABI, which does not match the installed
+`better-sqlite3`. `app/src/api.js` spawns `node` (overridable via `$VERQURY_NODE`) so
+the ABI matches. This is the whole point of ADR-0006 — don't "optimize" it to execPath.
+
+**ESM main + CommonJS preload.** `main.js` is ESM (Electron ≥28 supports it) so it can
+import the ESM `verqury-core`. The preload is `preload.cjs` (CommonJS) — the well-worn,
+sandbox-compatible path — and only touches `contextBridge`/`ipcRenderer`, never core.
+`contextIsolation: true`, `nodeIntegration: false`, sandbox on.
+
+**chokidar v5 on Linux** uses `fs.watch` (no native module) and watches directories
+recursively; we filter events to `*.md`. No glob patterns (dropped in v4).
+
+**capturePage() can return a 0-byte PNG** right after load on a software-rendered/
+headless GPU (expect `MESA`/`VAAPI` warnings in the log). Waiting for a paint (our
+verify harness does other async work first) yields a real capture. Functional
+verification via `webContents.executeJavaScript` DOM queries is the reliable signal;
+the screenshot is a bonus. The `VERQURY_VERIFY=<dir>` env runs this harness headlessly
+and writes `verify.json` (+ `shot.png`).
+
+**Tray needs a real image on Linux** or it warns/no-shows; we load the generated
+`renderer/assets/icon.png` and wrap tray creation in try/catch (non-fatal — the window
+is the deliverable).
 
 ## 4. Packaging & distribution
 

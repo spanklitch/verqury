@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+    <title>Verqury</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">V</span>
+        <div>
+          <div class="brand-name">Verqury</div>
+          <div class="brand-tag">Layer, not IDE</div>
+        </div>
+      </div>
+      <input id="search" class="search" type="search" placeholder="Search projects, guidance, memory…" autocomplete="off" />
+      <div id="list" class="list"></div>
+    </aside>
+
+    <main class="main">
+      <div id="detail" class="detail">
+        <div class="empty">Select a project.</div>
+      </div>
+    </main>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
