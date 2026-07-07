@@ -16,11 +16,21 @@ verify success criteria, update this file.
 - [ ] **Phase 7 — Adapter registry + launch**
 - [ ] **Phase 8 — Packaging, docs, release prep**
 
-## Open questions (plan §7 — need Gary's answers before they bite)
+## Open questions (plan §7)
 
-1. Data root location: `~/FlawedWorks/velora/` proposed — **needed by Phase 1** (default is fine to build with; it's configurable).
-2. Back-import Mebit/ZAGNALS as seed data during Phase 1 testing, or start clean?
+1. Data root location: `~/FlawedWorks/velora/` — building against this default; configurable.
+2. ~~Back-import Mebit/ZAGNALS?~~ **RESOLVED 2026-07-07: yes, seed both** at end of
+   Phase 1 via the normal CLI (no importer feature — scope creep). Entries are stubs +
+   pointers: project.md with `repo:` path to the code repo + links, plus a few decisions/
+   log entries distilled from each project's CLAUDE.md. Source code never enters Velora.
+   Data root is user data, never in this repo — publishability unaffected (ADR-0001).
+   Note: live post-ship projects will cycle `stage` back to `build` per release train;
+   the linear stage enum is a label, not a gate.
 3. Capture hotkey (Ctrl+Alt+C proposed) — needed by Phase 4.
+
+## Repo status
+
+Private GitHub repo `spanklitch/velora` created + main pushed 2026-07-07 (Gary confirmed).
 
 ## Session log
 
