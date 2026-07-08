@@ -1,6 +1,6 @@
 {
   "name": "verqury-app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Verqury Electron shell — workflow layer over AI-assisted product development",
   "type": "module",
