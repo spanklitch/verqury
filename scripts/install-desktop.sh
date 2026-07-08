@@ -41,8 +41,18 @@ Categories=Development;Utility;
 StartupWMClass=Verqury
 EOF
 chmod +x "$desktop"
-
 update-desktop-database "$desk_dir" 2>/dev/null || true
+
+# Also place a clickable icon on the desktop (XFCE shows executable .desktop files).
+desktop_dir="${XDG_DESKTOP_DIR:-$HOME/Desktop}"
+if [ -d "$desktop_dir" ]; then
+  cp "$desktop" "$desktop_dir/verqury.desktop"
+  chmod +x "$desktop_dir/verqury.desktop"
+  # Mark it trusted so XFCE launches it without the "untrusted launcher" prompt.
+  gio set "$desktop_dir/verqury.desktop" metadata::xfce-exe-checksum \
+    "$(sha256sum "$desktop_dir/verqury.desktop" | cut -d' ' -f1)" 2>/dev/null || true
+  echo "Desktop icon:      $desktop_dir/verqury.desktop"
+fi
+
 echo "Installed launcher: $desktop"
 echo "  runs: $exec_line"
-echo "Tip: copy it to ~/Desktop for a clickable desktop icon:  cp \"$desktop\" ~/Desktop/"
