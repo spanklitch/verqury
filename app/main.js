@@ -38,12 +38,9 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 const iconPath = path.join(dir, 'renderer', 'assets', 'icon.png');
 const root = api.ensureRoot(api.getRoot());
 
-// In the packaged app there is no guarantee `node` is on PATH, so run the search
-// CLI under Electron's own embedded node (better-sqlite3 is rebuilt for Electron's
-// ABI at package time). Dev/tests keep using the system node (ADR-0008).
-if (app.isPackaged) {
-  api.configureNode({ bin: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } });
-}
+// Search runs the CLI under the system `node` (ADR-0008). The packaged app ships
+// unpacked (asar:false) with the system-ABI better-sqlite3, and `node` — the same
+// one that built it — loads it. `$VERQURY_NODE` can override the binary.
 
 const startHidden = process.argv.includes('--hidden'); // autostart-to-tray
 

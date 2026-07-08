@@ -6,6 +6,7 @@
   "type": "module",
   "main": "main.js",
   "author": "FlawedWorks <hello@flawedworks.com>",
+  "homepage": "https://flawedworks.com",
   "scripts": {
     "start": "electron .",
     "test": "node --test test/",
@@ -34,10 +35,8 @@
       "renderer/**/*",
       "src/**/*"
     ],
-    "asarUnpack": [
-      "**/node_modules/better-sqlite3/**"
-    ],
-    "npmRebuild": true,
+    "asar": false,
+    "npmRebuild": false,
     "linux": {
       "target": [
         "AppImage",

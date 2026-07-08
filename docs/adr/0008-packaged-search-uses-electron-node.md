@@ -12,35 +12,43 @@ development and tests that is the *system* `node` on PATH, ABI-matched to the
 question: a shipped AppImage cannot assume an end user has `node` on PATH, and the
 system `node`'s ABI may not match the bundled `better-sqlite3`.
 
+Packaging attempt 1 tried Electron's embedded node
+(`ELECTRON_RUN_AS_NODE`) so the app would be self-contained. That path requires
+`npmRebuild: true` to rebuild `better-sqlite3` for Electron's ABI — but electron-builder's
+"installing production dependencies" step **prunes dev-dependencies from a hoisted npm
+workspace and deletes its own `app-builder-bin` helper mid-build** (`spawn … app-builder
+ENOENT`). That is a hard electron-builder + workspaces incompatibility, not a config typo.
+
 ## Decision
 
-The subprocess launcher is configurable (`api.configureNode`). Defaults stay as they
-were — system `node`, empty extra env — so dev and `npm test` are unchanged. When the
-app is packaged (`app.isPackaged`), main configures the subprocess to run under
-**Electron's own embedded node** via `process.execPath` with
-`ELECTRON_RUN_AS_NODE=1`. electron-builder rebuilds `better-sqlite3` for Electron's
-ABI at package time (`npmRebuild: true`, `asarUnpack` the module), so the CLI loaded
-by that embedded node finds a matching binary.
+The search subprocess runs under the **system `node`** (the launcher stays configurable
+via `api.configureNode` / `$VERQURY_NODE`; there is no `app.isPackaged` switch). To make
+that work in a package:
+
+- `npmRebuild: false` — electron-builder does not rebuild/reinstall, so it never prunes
+  and never deletes `app-builder-bin`. The build completes.
+- `asar: false` — the app ships as plain files, so the system `node` (which cannot read
+  an asar archive) can execute `verqury-core/cli.js` and load `better-sqlite3`.
+- `better-sqlite3` ships as the system-ABI build produced by `npm install`; the same
+  system `node` loads it, so the ABI matches.
 
 ## Consequences
 
-- The packaged app is self-contained: no dependency on a user-installed `node`, and
-  one consistent ABI (Electron's).
-- ADR-0006's architecture is preserved — `better-sqlite3` is still never loaded into
-  the Electron *main/renderer*; only the short-lived subprocess loads it.
-- Dev and tests keep using the system node with the system-ABI build — no
-  electron-rebuild in the normal loop; the rebuild happens only inside packaging.
-- Cost: this is verified by building and launching the packaged app. The
-  `ELECTRON_RUN_AS_NODE` path only exercises in a real package, not in `electron .`
-  dev runs, so it needs a packaged smoke test (recorded in engineering-notes).
+- The build succeeds in the workspace layout (the blocker above is gone).
+- ADR-0006 is preserved: `better-sqlite3` is still never loaded into Electron's
+  main/renderer; only the short-lived subprocess loads it.
+- Dev and tests are unchanged (they already used the system node).
+- **Trade-off:** the packaged app requires `node` on PATH, and the bundled
+  `better-sqlite3` prebuild matches the ABI of the `node` that installed it. Both hold
+  for the developer audience (and for Gary specifically). Public multi-machine
+  distribution would want a self-contained variant — revisit then (bundle a node, or
+  solve the workspace-rebuild issue) and supersede this ADR.
 
 ## Alternatives considered
 
-- **Bundle a standalone node binary** — rejected: ~50 MB, and a second toolchain to
-  version alongside Electron's own node.
-- **Load `better-sqlite3` in-process in Electron** (drop the subprocess) — rejected:
-  reintroduces the dual-ABI dance in dev/test that ADR-0006 removed, for a feature
-  used once per query.
-- **Require `node` on the user's PATH** — rejected as a shipped default: fine for the
-  developer audience but not self-contained; `VERQURY_NODE` still allows it as an
-  override.
+- **Electron embedded node + `npmRebuild: true`** — blocked by the electron-builder
+  workspace prune bug (above).
+- **Bundle a standalone node binary** — deferred: ~50 MB and a second toolchain to
+  version; not worth it for the current audience.
+- **Two-package.json / de-hoisted build layout** to satisfy electron-builder — deferred:
+  a larger restructure than a first release needs.

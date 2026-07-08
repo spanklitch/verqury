@@ -14,7 +14,7 @@ verify success criteria, update this file.
 - [x] **Phase 5 — Session bootstrapper** (2026-07-07)
 - [x] **Phase 6 — Task router** (2026-07-07)
 - [x] **Phase 7 — Adapter registry + launch** (2026-07-07)
-- [~] **Phase 8 — Packaging, docs, release prep** (2026-07-07 — code/config/docs done; AppImage build + v0.1.0 tag pending Gary on a real host)
+- [x] **Phase 8 — Packaging, docs, release prep** (2026-07-08 — AppImage built + verified running; only v0.1.0 tag + push remain)
 
 ## Open questions (plan §7)
 
@@ -337,3 +337,31 @@ electronVersion pin + sandbox-drops-binaries gotchas.
 
 **Build plan status: Phases 0–7 fully done; Phase 8 code/config/docs done. Verqury is
 feature-complete; only the human-gated release build + tag remain.**
+
+### 2026-07-08 — Phase 8 build FIXED + VERIFIED (session 9 cont., Opus)
+**Root cause of the failed build (was misread as a sandbox issue):** electron-builder's
+"installing production dependencies" step **prunes devDependencies from the hoisted npm
+workspace and deletes its own `app-builder-bin` helper mid-build** → `spawn … app-builder
+ENOENT`. Reproducible, environment-independent. Known electron-builder + workspaces bug.
+
+**Fix (ADR-0008 revised):** `npmRebuild: false` (no rebuild → no prune → build completes)
++ `asar: false` (so the system-`node` search subprocess can execute the CLI as plain files)
++ packaged search uses the **system node** (dropped the `ELECTRON_RUN_AS_NODE`/isPackaged
+switch); the bundled system-ABI better-sqlite3 matches the node that built it. Added
+`homepage` (deb metadata required it). eslint now ignores `dist/`.
+
+**VERIFIED on this machine (2026-07-08):**
+- `npm run dist -w app` → **built `app/dist/Verqury-0.1.0.AppImage` (121 MB) + `verqury-app_0.1.0_amd64.deb` (83 MB)**.
+- Launched the packaged AppImage headless (`--appimage-extract-and-run`) with the
+  VERQURY_VERIFY harness → **all 27 checks PASS in the packaged app**, and `index.sqlite`
+  was written by the packaged search subprocess (proves system-node + better-sqlite3 work
+  inside the package). 47 tests + lint green.
+
+**DONE-WHEN MET** (AppImage installs+runs; search works). Remaining = human-gated only:
+Gary verifies the AppImage on his desktop (double-click / run it, click around), then tags:
+`git tag -a v0.1.0 <commit> -m "v0.1.0 — first release"` → `git push origin v0.1.0`.
+Trade-off (ADR-0008): packaged app needs `node` on PATH — fine for the dev audience; a
+self-contained variant is a post-0.1 follow-up.
+
+**ALL 9 PHASES DONE. Verqury 0.1.0 is built and verified; it ships the moment Gary pushes
+the commits + tag.**
