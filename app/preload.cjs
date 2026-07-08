@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('verqury', {
   getActiveProject: () => ipcRenderer.invoke('project:getActive'),
   setActiveProject: (slug) => ipcRenderer.invoke('project:setActive', slug),
   captureNow: () => ipcRenderer.invoke('capture:now'),
+  captureText: (text) => ipcRenderer.invoke('capture:text', text),
 
   listPackets: () => ipcRenderer.invoke('packet:list'),
   renderPacket: (packetSlug, projectSlug, opts) => ipcRenderer.invoke('packet:render', packetSlug, projectSlug, opts),

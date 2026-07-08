@@ -51,6 +51,49 @@ function toast(msg) {
   toastTimer = setTimeout(() => (toastEl.hidden = true), 1500);
 }
 
+/* ---------- theme (dark by default) ---------- */
+const themeBtn = document.getElementById('theme-toggle');
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  themeBtn.textContent = theme === 'light' ? '☀' : '☾';
+}
+applyTheme(localStorage.getItem('verqury-theme') || 'dark');
+themeBtn.addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  localStorage.setItem('verqury-theme', next);
+  applyTheme(next);
+});
+
+/* ---------- drag-and-drop capture ---------- */
+// Drag highlighted text (from another window or from a Verqury tile) onto the
+// app to capture it into the active project — no copy/paste needed.
+let dragDepth = 0;
+const isField = (node) => node && (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA');
+document.addEventListener('dragover', (e) => {
+  if (isField(e.target)) return; // let form fields handle their own drops
+  const types = e.dataTransfer ? [...e.dataTransfer.types] : [];
+  if (types.includes('text/plain') || types.includes('text/uri-list')) e.preventDefault();
+});
+document.addEventListener('dragenter', () => {
+  dragDepth += 1;
+  document.body.classList.add('dragging');
+});
+document.addEventListener('dragleave', () => {
+  dragDepth -= 1;
+  if (dragDepth <= 0) document.body.classList.remove('dragging');
+});
+document.addEventListener('drop', async (e) => {
+  dragDepth = 0;
+  document.body.classList.remove('dragging');
+  if (isField(e.target)) return; // dropped into a form field — native insert
+  const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
+  if (!text || !text.trim()) return;
+  e.preventDefault();
+  const r = await window.verqury.captureText(text);
+  if (r && r.ok) toast(`Captured → ${r.project}`);
+  else toast(r && r.reason === 'no-project' ? 'Create a project first' : 'Nothing captured');
+});
+
 // Render markdown into a container and route external links through the shell.
 function markdownInto(container, src) {
   container.innerHTML = renderMarkdown(src);

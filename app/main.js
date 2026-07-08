@@ -122,6 +122,7 @@ function setupIpc() {
   ipcMain.handle('project:getActive', () => api.getActive(root));
   ipcMain.handle('project:setActive', (_e, slug) => api.setActive(root, slug));
   ipcMain.handle('capture:now', () => captureFromClipboard()); // manual trigger (UI button / verify)
+  ipcMain.handle('capture:text', (_e, text) => captureText(text)); // drag-and-drop
 
   ipcMain.handle('packet:list', () => api.getPackets(root));
   ipcMain.handle('packet:render', (_e, packetSlug, projectSlug, opts) => api.renderPacket(root, packetSlug, projectSlug, opts));
@@ -160,17 +161,26 @@ function notify(body) {
   }
 }
 
-// The clipboard-capture path shared by the global hotkey and the UI button.
-function captureFromClipboard() {
-  const outcome = api.captureClipboard(root, () => clipboard.readText());
+// Shared capture finisher: index refresh + notify the UI/OS.
+function finishCapture(outcome) {
   if (!outcome.ok) {
-    notify(outcome.reason === 'empty' ? 'Clipboard empty — nothing captured' : 'Create a project first to capture');
+    notify(outcome.reason === 'empty' ? 'Nothing to capture' : 'Create a project first to capture');
     return outcome;
   }
   api.refreshIndex(root);
   if (win && !win.isDestroyed()) win.webContents.send('artifact:captured', { project: outcome.project, id: outcome.artifact.id });
   notify(`Captured ${outcome.artifact.kind} → ${outcome.project}`);
   return outcome;
+}
+
+// Capture from the clipboard (global hotkey / UI button).
+function captureFromClipboard() {
+  return finishCapture(api.captureClipboard(root, () => clipboard.readText()));
+}
+
+// Capture dragged-and-dropped text (drop onto the window).
+function captureText(text) {
+  return finishCapture(api.captureClipboard(root, () => String(text ?? '')));
 }
 
 function setupHotkey() {

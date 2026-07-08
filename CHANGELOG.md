@@ -8,10 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Visual polish: a gradient layered-chevron logomark (with a matching generated
-  app icon), an enriched violet palette with more depth, gradient tabs and primary
-  actions, refined card/badge/focus states, and typographic tuning. `scripts/gen-icon.mjs`
-  renders the icon PNG from the SVG via Electron (no external tooling).
+- Branding: the Verqury droplet logo as the sidebar mark and app icon
+  (`scripts/gen-icon.mjs` renders the PNG via Electron — no external tooling).
+- Dark navy theme by default (suits the logo and syntax-colored code) with an
+  indigo accent, plus a light/dark toggle in the header (persisted).
+- Drag-and-drop capture: drag highlighted text (from another window or a Verqury
+  tile) onto the app to file it into the active project — no copy/paste needed.
+- `scripts/install-desktop.sh`: installs a desktop/menu launcher that runs the
+  built AppImage with the droplet icon.
+- Visual polish: refined card/badge/focus states, softer shadows, subtle
+  background depth, and typographic tuning.
 
 ### Changed
 ### Fixed
