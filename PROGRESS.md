@@ -14,7 +14,7 @@ verify success criteria, update this file.
 - [x] **Phase 5 — Session bootstrapper** (2026-07-07)
 - [x] **Phase 6 — Task router** (2026-07-07)
 - [x] **Phase 7 — Adapter registry + launch** (2026-07-07)
-- [ ] **Phase 8 — Packaging, docs, release prep**
+- [~] **Phase 8 — Packaging, docs, release prep** (2026-07-07 — code/config/docs done; AppImage build + v0.1.0 tag pending Gary on a real host)
 
 ## Open questions (plan §7)
 
@@ -302,3 +302,38 @@ electron-builder AppImage + .deb, autostart-to-tray option, README polish, CHANG
 annotated v0.1.0 tag, screenshots, security/sanitization pass. NOTE the ADR-0006 caveat:
 the app shells out to system `node` for search — packaging must bundle node or rebuild
 better-sqlite3 for Electron (decide + document; may supersede ADR-0006).
+
+### 2026-07-07 — Phase 8 (session 9, Opus) — code/config/docs complete; build pending
+**Shipped:** Release prep. **ADR-0008** resolves the ADR-0006 packaging caveat: the search
+subprocess is configurable (`api.configureNode`); the packaged app runs the CLI under
+Electron's embedded node (`ELECTRON_RUN_AS_NODE`, gated on `app.isPackaged`), and
+electron-builder rebuilds better-sqlite3 for Electron's ABI + asarUnpack. Dev/tests
+unchanged (system node). Autostart-to-tray (tray "Start on login" toggles
+`~/.config/autostart/verqury.desktop`; `--hidden` → `createWindow(false)`). electron-builder
+config in app/package.json (AppImage + deb, electronVersion pinned for the monorepo, icon,
+maintainer). Versions bumped to **0.1.0** (root/core/app). README: hero screenshot
+(docs/screenshots/verqury.png) + Packaging section. CHANGELOG **[0.1.0] - 2026-07-07** with
+compare/release links. engineering-notes §4 Packaging.
+
+**Verified:**
+- 47 tests green, lint clean. Full VERQURY_VERIFY harness re-run with the Phase 8 code
+  changes: **all 27 checks pass** (regression — configureNode default/system-node search,
+  tray/window rework, createWindow(show) all fine). Hero screenshot captured from the app.
+- **NOT verified: the actual AppImage build.** electron-builder cannot complete in this
+  sandbox — its internal npm install / binary fetch drops `app-builder-bin` (spawn ENOENT),
+  an environment limit, not a config bug. Stopped after 3 attempts per the anti-grind rule.
+  Config is correct (got past electron-version + author resolution); build needs a real host.
+
+**Remaining (Gary, on a real machine):**
+1. `npm run dist -w app` → confirm the AppImage launches on a fresh-ish profile. This is the
+   ONLY path that exercises ADR-0008's ELECTRON_RUN_AS_NODE search — verify search works in
+   the packaged app specifically.
+2. After confirming: `git tag -a v0.1.0 <release-commit> -m "v0.1.0 — first release"` at the
+   Phase 8 commit, verify with `git show v0.1.0 --stat | head`, then `git push origin v0.1.0`.
+
+**Notes:** AppImage done-when not met in-session (environmental). Everything else (config,
+code, docs, versioning) complete + verified. See engineering-notes §4 for the monorepo
+electronVersion pin + sandbox-drops-binaries gotchas.
+
+**Build plan status: Phases 0–7 fully done; Phase 8 code/config/docs done. Verqury is
+feature-complete; only the human-gated release build + tag remain.**

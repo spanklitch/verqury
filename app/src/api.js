@@ -2,10 +2,10 @@
 // Deliberately Electron-free so it is testable under plain Node (ADR-0002).
 //
 // File reads/writes go through verqury-core's native-free 'files' surface,
-// loaded in-process. Search goes through a short-lived `node` subprocess running
-// the CLI, so better-sqlite3 is never loaded into Electron (ADR-0006). We spawn
-// the *system* node (ABI-matched to the installed better-sqlite3), not Electron's
-// embedded node.
+// loaded in-process. Search goes through a short-lived node subprocess running
+// the CLI, so better-sqlite3 is never loaded into Electron (ADR-0006). Which node
+// runs it is configurable (see configureNode): dev/tests use the system node;
+// the packaged app uses Electron's own embedded node (ADR-0008).
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import {
@@ -51,7 +51,15 @@ import {
 
 const require = createRequire(import.meta.url);
 const CLI = require.resolve('verqury-core/cli');
-const NODE = process.env.VERQURY_NODE || 'node';
+
+// How the search subprocess is launched. Default: the system `node` on PATH
+// (dev + tests). The packaged app calls configureNode() to run the CLI under
+// Electron's embedded node instead (ADR-0008).
+let nodeConfig = { bin: process.env.VERQURY_NODE || 'node', env: {} };
+
+export function configureNode(cfg) {
+  nodeConfig = { ...nodeConfig, ...cfg };
+}
 
 export function getRoot() {
   return resolveRoot();
@@ -214,8 +222,8 @@ export function captureClipboard(root, readClipboard) {
 }
 
 function cli(root, args) {
-  return execFileSync(NODE, [CLI, ...args], {
-    env: { ...process.env, VERQURY_DATA_ROOT: root },
+  return execFileSync(nodeConfig.bin, [CLI, ...args], {
+    env: { ...process.env, ...nodeConfig.env, VERQURY_DATA_ROOT: root },
     encoding: 'utf8',
   });
 }

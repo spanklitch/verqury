@@ -1,6 +1,6 @@
 {
   "name": "verqury",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Verqury — layer, not IDE. A low-friction desktop companion for AI-assisted product development.",
   "workspaces": [
@@ -9,7 +9,9 @@
   ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "dist": "npm run dist -w app",
+    "pack": "npm run pack -w app"
   },
   "devDependencies": {
     "eslint": "^9.0.0"

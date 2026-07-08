@@ -89,3 +89,14 @@ per-project launch buttons; adapter:launch renders handoff packet→clipboard th
 substituted command detached (shell:true,unref). 47 tests green; harness proves done-when
 via the settings FORM (adapterCards=5, adapterLaunched, adapterHandoffCopied) + full P2–6
 regression. Gotcha: config.json not watched → settings UI self-refreshes (eng-notes §3).
+
+### 2026-07-07 — Phase 8 (code/config/docs done; build pending Gary)
+Release prep. ADR-0008 resolves ADR-0006: packaged search runs CLI under Electron's embedded
+node (ELECTRON_RUN_AS_NODE, app.isPackaged→api.configureNode); electron-builder rebuilds
+better-sqlite3 for Electron ABI + asarUnpack. Dev/tests unchanged (system node).
+Autostart-to-tray (~/.config/autostart/verqury.desktop; --hidden→createWindow(false)).
+electron-builder config (AppImage+deb, electronVersion pinned for monorepo). v0.1.0 across
+root/core/app. README hero + Packaging; CHANGELOG [0.1.0]; eng-notes §4. 47 tests + full
+27-check harness regression green. **AppImage build NOT run — electron-builder can't complete
+in this sandbox (app-builder-bin dropped); Gary runs `npm run dist -w app` on a real host,
+verifies, then tags v0.1.0. Verqury is feature-complete.**

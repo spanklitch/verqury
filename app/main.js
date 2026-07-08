@@ -3,6 +3,7 @@
 // without launching Electron. This file only wires: window, tray, IPC, watcher.
 import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, clipboard, shell, globalShortcut, Notification } from 'electron';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -37,18 +38,28 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 const iconPath = path.join(dir, 'renderer', 'assets', 'icon.png');
 const root = api.ensureRoot(api.getRoot());
 
+// In the packaged app there is no guarantee `node` is on PATH, so run the search
+// CLI under Electron's own embedded node (better-sqlite3 is rebuilt for Electron's
+// ABI at package time). Dev/tests keep using the system node (ADR-0008).
+if (app.isPackaged) {
+  api.configureNode({ bin: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } });
+}
+
+const startHidden = process.argv.includes('--hidden'); // autostart-to-tray
+
 let win = null;
 let tray = null;
 let watcher = null;
 let refreshTimer = null;
 
-function createWindow() {
+function createWindow(show = true) {
   win = new BrowserWindow({
     width: 1100,
     height: 720,
     title: 'Verqury',
     icon: iconPath,
     backgroundColor: '#1a1626',
+    show,
     webPreferences: {
       preload: path.join(dir, 'preload.cjs'),
       contextIsolation: true,
@@ -57,6 +68,33 @@ function createWindow() {
   });
   win.loadFile(path.join(dir, 'renderer', 'index.html'));
   return win;
+}
+
+// Start-on-login is implemented the Linux way: a .desktop file in the user's
+// autostart dir. Electron's setLoginItemSettings is unreliable on Linux.
+const autostartFile = path.join(os.homedir(), '.config', 'autostart', 'verqury.desktop');
+
+function autostartEnabled() {
+  return fs.existsSync(autostartFile);
+}
+
+function setAutostart(enabled) {
+  if (!enabled) {
+    fs.rmSync(autostartFile, { force: true });
+    return;
+  }
+  const exec = process.env.APPIMAGE || process.execPath; // the launchable binary
+  const desktop = [
+    '[Desktop Entry]',
+    'Type=Application',
+    'Name=Verqury',
+    `Exec=${exec} --hidden`,
+    'X-GNOME-Autostart-enabled=true',
+    'Terminal=false',
+    '',
+  ].join('\n');
+  fs.mkdirSync(path.dirname(autostartFile), { recursive: true });
+  fs.writeFileSync(autostartFile, desktop);
 }
 
 function setupIpc() {
@@ -154,18 +192,30 @@ function setupWatcher() {
   });
 }
 
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Show Verqury', click: () => (win && !win.isDestroyed() ? win.show() : createWindow()) },
+    {
+      label: 'Start on login (to tray)',
+      type: 'checkbox',
+      checked: autostartEnabled(),
+      click: (item) => {
+        setAutostart(item.checked);
+        if (tray) tray.setContextMenu(buildTrayMenu());
+      },
+    },
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() },
+  ]);
+}
+
 function setupTray() {
   try {
     const img = nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 });
     tray = new Tray(img);
     tray.setToolTip('Verqury — layer, not IDE');
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: 'Show Verqury', click: () => (win && !win.isDestroyed() ? win.show() : createWindow()) },
-        { type: 'separator' },
-        { label: 'Quit', click: () => app.quit() },
-      ]),
-    );
+    tray.on('click', () => (win && !win.isDestroyed() ? win.show() : createWindow()));
+    tray.setContextMenu(buildTrayMenu());
   } catch (err) {
     console.warn('tray unavailable:', err.message); // non-fatal; window is the deliverable
   }
@@ -185,6 +235,10 @@ async function runVerify(outDir) {
     await dom('window.__verquryReady');
     result.projects = await dom("document.querySelectorAll('.project-card').length");
     result.detailTitle = await dom("document.querySelector('.detail-title')?.textContent || null");
+    if (process.env.VERQURY_HERO) {
+      const hero = await win.webContents.capturePage();
+      fs.writeFileSync(path.join(outDir, 'hero.png'), hero.toPNG());
+    }
     const slug = api.getProjects(root)[0].slug;
 
     // (1) live update: write a log on disk, expect the timeline to grow within ~2s.
@@ -315,7 +369,7 @@ async function runVerify(outDir) {
 
 app.whenReady().then(() => {
   setupIpc();
-  createWindow();
+  createWindow(!startHidden); // autostart launches hidden into the tray
   setupWatcher();
   setupTray();
   setupHotkey();

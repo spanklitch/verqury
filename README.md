@@ -13,6 +13,8 @@ routing, from first concept through build, release, and marketing.
 > Verqury is a workflow layer, not an IDE — and deliberately not a chat interface,
 > not a code editor, and not an agent orchestrator.
 
+![Verqury — the projects view: memory timeline, per-project launch buttons for each AI surface, and one-click session bootstrapping](docs/screenshots/verqury.png)
+
 ---
 
 ## What it does
@@ -84,6 +86,22 @@ npm test          # runs workspace tests (node --test)
 npm run lint
 npm start -w app  # launch the Electron shell
 ```
+
+### Packaging
+
+Verqury packages as a Linux AppImage and `.deb` via electron-builder:
+
+```bash
+npm run dist -w app   # AppImage + .deb into app/dist/
+npm run pack -w app   # unpacked dir (faster, for smoke-testing)
+```
+
+electron-builder rebuilds `better-sqlite3` for Electron's ABI at package time and
+unpacks it from the asar; the packaged app runs the search CLI under Electron's own
+embedded node ([ADR-0008](docs/adr/0008-packaged-search-uses-electron-node.md)), so no
+system `node` is required at runtime. Because electron/electron-builder are hoisted in
+the workspace, `electronVersion` is pinned in the build config. Run packaging on a
+real Linux host (electron-builder fetches platform binaries a sandbox may block).
 
 Built one phase per AI-agent session against [verqury-build-plan.md](verqury-build-plan.md);
 `PROGRESS.md` records what shipped per session. Versioning is hand-set until packaging

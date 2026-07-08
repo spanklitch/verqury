@@ -107,7 +107,31 @@ bridge rather than navigating the window. Clipboard writes also go through the b
 
 ## 4. Packaging & distribution
 
-<!-- electron-builder AppImage/.deb notes land in Phase 8. -->
+electron-builder config lives in `app/package.json` `build`; `npm run dist -w app`
+produces an AppImage + `.deb` in `app/dist/`, `npm run pack -w app` an unpacked dir.
+
+**Pin `electronVersion` in the monorepo.** electron and electron-builder are hoisted to
+the workspace-root `node_modules`, so electron-builder run from `app/` cannot infer the
+electron version and errors ("Cannot compute electron version…"). The fix is
+`build.electronVersion` set explicitly (it fetches the matching dist by version).
+
+**Native module in the package.** `better-sqlite3` is `asarUnpack`ed and rebuilt for
+Electron's ABI at package time (`npmRebuild: true`). The packaged app runs the search
+CLI under Electron's embedded node (`ELECTRON_RUN_AS_NODE`, `app.isPackaged` →
+`api.configureNode`), so that unpacked binary is the one it loads. See
+[ADR-0008](adr/0008-packaged-search-uses-electron-node.md). **Smoke-test the packaged
+build**, not just `electron .` — the `ELECTRON_RUN_AS_NODE` search path only exercises
+in a real package.
+
+**Build on a real host.** electron-builder downloads platform binaries (`app-builder-bin`,
+`7zip-bin`) and rebuilds native modules; a restricted sandbox can silently drop those
+during electron-builder's internal `npm install` step (symptom: `spawn …/app-builder
+ENOENT` even after the binary was installed). Run packaging on a normal Linux machine.
+
+**Autostart-to-tray** (`main.js`): the tray "Start on login" checkbox writes/removes
+`~/.config/autostart/verqury.desktop` (Electron's `setLoginItemSettings` is unreliable on
+Linux). Its `Exec` uses `$APPIMAGE || process.execPath` with `--hidden`, and `--hidden`
+makes `createWindow(false)` start the app in the tray without showing a window.
 
 ## 5. Credentials & secrets
 

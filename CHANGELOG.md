@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+### Changed
+### Fixed
+
+## [0.1.0] - 2026-07-07
+
+First release. Verqury is a local-first Linux desktop workflow layer for
+AI-assisted product development — projects with durable memory, a guidance
+library, clipboard-capture artifact inbox, session bootstrapper, task router,
+and a config-driven adapter registry.
+
+### Added
 - Project scaffold: repo, standard doc set (README, ADRs 0001–0005,
   engineering notes), phased build plan, Node workspace (`core/` + `app/`).
 - `verqury-core` data layer: data-root bootstrap, frontmatter read/write,
@@ -52,9 +63,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   handoff packet to the clipboard and spawn the (substituted) command detached. Ships
   four starter adapters (claude-code, claude-chat, cursor, browser-agent). Adding a new
   AI tool needs zero code changes. New `verqury adapter list` CLI.
+- Packaging: electron-builder config for Linux AppImage + `.deb`, an autostart-to-tray
+  option (tray toggle writes a `~/.config/autostart` entry; `--hidden` starts in the
+  tray), and the packaged-search resolution ([ADR-0008](docs/adr/0008-packaged-search-uses-electron-node.md)).
 
 ### Changed
 - Renamed product Velora → **Verqury** (prior name in use by another company);
   applies to package names, CLI command, data root, and all docs.
 
-### Fixed
+[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/spanklitch/verqury/releases/tag/v0.1.0

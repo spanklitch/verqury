@@ -1,19 +1,52 @@
 {
   "name": "verqury-app",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Verqury Electron shell — workflow layer over AI-assisted product development",
   "type": "module",
   "main": "main.js",
+  "author": "FlawedWorks <hello@flawedworks.com>",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
   "dependencies": {
     "chokidar": "^5.0.0",
     "verqury-core": "*"
   },
   "devDependencies": {
-    "electron": "^41.7.1"
+    "electron": "^41.7.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.flawedworks.verqury",
+    "productName": "Verqury",
+    "electronVersion": "41.7.1",
+    "directories": {
+      "output": "dist",
+      "buildResources": "renderer/assets"
+    },
+    "files": [
+      "main.js",
+      "preload.cjs",
+      "renderer/**/*",
+      "src/**/*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "npmRebuild": true,
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "renderer/assets/icon.png",
+      "maintainer": "FlawedWorks <hello@flawedworks.com>",
+      "synopsis": "Layer, not IDE — a workflow companion for AI-assisted product development."
+    }
   }
 }
