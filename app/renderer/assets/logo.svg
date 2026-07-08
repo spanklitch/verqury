@@ -1,0 +1,18 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verqury">
+  <defs>
+    <linearGradient id="vqTile" x1="4" y1="2" x2="44" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8b6dff"/>
+      <stop offset="0.55" stop-color="#5a37e0"/>
+      <stop offset="1" stop-color="#3a1c9e"/>
+    </linearGradient>
+    <linearGradient id="vqSheen" x1="10" y1="6" x2="24" y2="26" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="44" height="44" rx="13" fill="url(#vqTile)"/>
+  <rect x="2" y="2" width="44" height="44" rx="13" fill="url(#vqSheen)"/>
+  <!-- layered chevrons: a stacked "V" for "Layer, not IDE" -->
+  <path d="M14 14 L24 25 L34 14" stroke="#ffffff" stroke-opacity="0.42" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14 21 L24 32 L34 21" stroke="#ffffff" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Visual polish: a gradient layered-chevron logomark (with a matching generated
+  app icon), an enriched violet palette with more depth, gradient tabs and primary
+  actions, refined card/badge/focus states, and typographic tuning. `scripts/gen-icon.mjs`
+  renders the icon PNG from the SVG via Electron (no external tooling).
+
 ### Changed
 ### Fixed
 
