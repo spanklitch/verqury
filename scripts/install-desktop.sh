@@ -19,8 +19,9 @@ mkdir -p "$apps_dir" "$icon_dir" "$desk_dir"
 install -m 0755 "$appimage" "$apps_dir/Verqury.AppImage"
 install -m 0644 "$repo/app/renderer/assets/icon.png" "$icon_dir/verqury.png"
 
-# AppImages need libfuse2; fall back to extract-and-run when it's absent.
-if ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; then
+# AppImages need libfuse2; test the runtime directly and fall back to
+# extract-and-run only when FUSE mounting genuinely fails.
+if "$apps_dir/Verqury.AppImage" --appimage-version >/dev/null 2>&1; then
   exec_line="$apps_dir/Verqury.AppImage"
 else
   exec_line="$apps_dir/Verqury.AppImage --appimage-extract-and-run"
