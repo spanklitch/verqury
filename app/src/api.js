@@ -11,6 +11,7 @@ import { createRequire } from 'node:module';
 import {
   resolveRoot,
   init,
+  createProject,
   listProjects,
   showProject,
   setStage,
@@ -43,6 +44,7 @@ import {
   removeAdapter as coreRemoveAdapter,
   resolveCommand,
   STAGES,
+  STATUSES,
   GUIDANCE_KINDS,
   ARTIFACT_KINDS,
   TASK_ROUTES,
@@ -68,6 +70,14 @@ export function getRoot() {
 export function ensureRoot(root) {
   init(root);
   return root;
+}
+
+export function getStatuses() {
+  return STATUSES;
+}
+
+export function makeProject(root, payload) {
+  return createProject(root, payload);
 }
 
 export function getProjects(root) {

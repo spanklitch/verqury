@@ -9,7 +9,7 @@ import { STAGES, STATUSES, assertEnum, today } from './schema.js';
 
 const SUBDIRS = ['guidance', 'memory/decisions', 'memory/log', 'artifacts', 'tasks', 'packets'];
 
-export function createProject(root, { name, slug, stage = 'concept', status = 'active', repo = null, links = [] } = {}) {
+export function createProject(root, { name, slug, stage = 'concept', status = 'active', repo = null, links = [], body } = {}) {
   if (!name || !String(name).trim()) throw new Error('Project name is required');
   const finalSlug = slugify(slug || name);
   if (!finalSlug) throw new Error(`Could not derive a slug from "${name}"`);
@@ -21,8 +21,10 @@ export function createProject(root, { name, slug, stage = 'concept', status = 'a
   for (const sub of SUBDIRS) fs.mkdirSync(path.join(p.base, sub), { recursive: true });
 
   const data = { name, slug: finalSlug, created: today(), stage, status, repo, links };
-  const body = `# ${name}\n\n_Narrative — the concept, current thinking, and where this project stands._\n`;
-  writeDoc(p.file, data, body);
+  const finalBody = body && body.trim()
+    ? (body.endsWith('\n') ? body : `${body}\n`)
+    : `# ${name}\n\n_Narrative — the concept, current thinking, and where this project stands._\n`;
+  writeDoc(p.file, data, finalBody);
   return { ...data, path: p.file };
 }
 

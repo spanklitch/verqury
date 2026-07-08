@@ -13,6 +13,7 @@ const toastEl = el('#toast');
 const state = {
   mode: 'projects',
   stages: [],
+  statuses: [],
   kinds: [],
   artifactKinds: [],
   taskRoutes: [],
@@ -108,9 +109,10 @@ function markdownInto(container, src) {
 /* ---------- sidebar lists ---------- */
 
 function renderProjectList() {
-  listEl.replaceChildren(h('div', { class: 'section-label', text: 'Projects' }));
+  listEl.replaceChildren(h('button', { class: 'btn wide', onclick: showNewProjectForm }, '＋ New project'));
+  listEl.append(h('div', { class: 'section-label', text: 'Projects' }));
   if (!state.projects.length) {
-    listEl.append(h('div', { class: 'project-card', text: 'No projects yet.' }));
+    listEl.append(h('div', { class: 'project-card', text: 'No projects yet — create one above.' }));
     return;
   }
   for (const p of state.projects) {
@@ -552,6 +554,45 @@ async function refreshAdapters() {
   if (state.mode === 'settings') renderSettingsList();
 }
 
+function showNewProjectForm() {
+  state.activeProject = null;
+  renderProjectList();
+  const nameInput = h('input', { type: 'text', placeholder: 'Project name' });
+  const stageSel = h('select', {});
+  for (const s of state.stages) stageSel.append(h('option', { value: s, text: s }));
+  const statusSel = h('select', {});
+  for (const s of state.statuses) statusSel.append(h('option', { value: s, text: s }));
+  const repoInput = h('input', { type: 'text', placeholder: 'Repo path (optional) — e.g. /home/you/code/project' });
+  const bodyArea = h('textarea', { spellcheck: 'false', placeholder: 'Narrative — the concept and where it stands (optional)' });
+
+  const create = h('button', { class: 'btn primary', onclick: async () => {
+    if (!nameInput.value.trim()) return toast('Name is required');
+    try {
+      const p = await window.verqury.createProject({
+        name: nameInput.value.trim(),
+        stage: stageSel.value,
+        status: statusSel.value,
+        repo: repoInput.value.trim() || null,
+        body: bodyArea.value,
+      });
+      await refreshProjects();
+      selectProject(p.slug);
+      toast('Project created');
+    } catch (err) { toast(err.message); }
+  } }, 'Create');
+  const cancel = h('button', { class: 'btn', onclick: () => { renderProjectList(); detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select a project.' })); } }, 'Cancel');
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: 'New project' })),
+    h('div', { class: 'form' },
+      h('label', {}, 'Name', nameInput),
+      h('div', { class: 'form-row' }, h('label', {}, 'Stage', stageSel), h('label', {}, 'Status', statusSel)),
+      h('label', {}, 'Repo path', repoInput),
+      h('label', {}, 'Narrative', bodyArea),
+      h('div', { class: 'detail-actions' }, create, cancel)),
+  );
+}
+
 // Session bootstrapper: pick a packet, preview it rendered for this project,
 // then copy to clipboard or write to the packet's output file.
 async function showBootstrap(projectSlug) {
@@ -772,6 +813,7 @@ async function refreshAll() {
 
 async function init() {
   state.stages = await window.verqury.getStages();
+  state.statuses = await window.verqury.getStatuses();
   state.kinds = await window.verqury.guidanceKinds();
   state.artifactKinds = await window.verqury.artifactKinds();
   state.taskRoutes = await window.verqury.taskRoutes();

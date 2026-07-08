@@ -5,6 +5,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('verqury', {
   getRoot: () => ipcRenderer.invoke('root:get'),
   getStages: () => ipcRenderer.invoke('stages:get'),
+  getStatuses: () => ipcRenderer.invoke('statuses:get'),
+  createProject: (payload) => ipcRenderer.invoke('project:create', payload),
   listProjects: () => ipcRenderer.invoke('projects:list'),
   getProject: (slug) => ipcRenderer.invoke('project:get', slug),
   setStage: (slug, stage) => ipcRenderer.invoke('project:setStage', slug, stage),

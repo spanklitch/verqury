@@ -97,6 +97,8 @@ function setAutostart(enabled) {
 function setupIpc() {
   ipcMain.handle('root:get', () => root);
   ipcMain.handle('stages:get', () => api.getStages());
+  ipcMain.handle('statuses:get', () => api.getStatuses());
+  ipcMain.handle('project:create', (_e, payload) => api.makeProject(root, payload));
   ipcMain.handle('projects:list', () => api.getProjects(root));
   ipcMain.handle('project:get', (_e, slug) => api.getProject(root, slug));
   ipcMain.handle('project:setStage', (_e, slug, stage) => api.changeStage(root, slug, stage));
@@ -242,12 +244,19 @@ async function runVerify(outDir) {
     await dom('window.__verquryReady');
     result.projects = await dom("document.querySelectorAll('.project-card').length");
     result.detailTitle = await dom("document.querySelector('.detail-title')?.textContent || null");
+    const slug = api.getProjects(root)[0].slug; // the seeded project (capture before we add one)
+
+    // (0) project creation via the UI bridge → project.md on disk.
+    const beforeProjects = api.getProjects(root).length;
+    await dom("window.verqury.createProject({ name: 'Harness Project', stage: 'concept', status: 'active' })");
+    await wait(200);
+    result.projectCreated =
+      api.getProjects(root).length === beforeProjects + 1 &&
+      fs.existsSync(path.join(root, 'projects', 'harness-project', 'project.md'));
     if (process.env.VERQURY_HERO) {
       const hero = await win.webContents.capturePage();
       fs.writeFileSync(path.join(outDir, 'hero.png'), hero.toPNG());
     }
-    const slug = api.getProjects(root)[0].slug;
-
     // (1) live update: write a log on disk, expect the timeline to grow within ~2s.
     const before = await timelineCount();
     addLog(root, slug, { text: 'verify-harness live update probe', title: 'Live Probe' });
