@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 ### Fixed
 
+## [0.1.2] - 2026-07-08
+
+### Added
+- Create projects from the UI: a **+ New project** form (name, stage, status,
+  repo, optional narrative). Projects were previously CLI-only.
+
 ## [0.1.1] - 2026-07-08
 
 Visual identity and quality-of-life pass.
@@ -90,6 +96,7 @@ and a config-driven adapter registry.
 - Renamed product Velora → **Verqury** (prior name in use by another company);
   applies to package names, CLI command, data root, and all docs.
 
-[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/spanklitch/verqury/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/spanklitch/verqury/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/spanklitch/verqury/releases/tag/v0.1.0

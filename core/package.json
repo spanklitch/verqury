@@ -1,6 +1,6 @@
 {
   "name": "verqury-core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Verqury core — file-first data layer, search index, and CLI",
   "type": "module",
   "main": "src/index.js",
