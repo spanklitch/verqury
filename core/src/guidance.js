@@ -60,6 +60,16 @@ export function showGuidance(root, scope, slug) {
 }
 
 // Global guidance plus every project's guidance, for the unified library view.
+export function setGuidanceBody(root, scope, slug, body) {
+  const dir = guidanceDirFor(root, scope);
+  const file = path.join(dir, `${slugify(slug)}.md`);
+  if (!fs.existsSync(file)) throw new Error(`No such guidance: ${scope}/${slug}`);
+  const { data } = readDoc(file);
+  data.updated = today();
+  writeDoc(file, data, body.endsWith('\n') ? body : `${body}\n`);
+  return { scope, slug };
+}
+
 export function listAllGuidance(root) {
   const all = listGuidance(root, { scope: 'global' });
   for (const p of listProjects(root)) all.push(...listGuidance(root, { scope: p.slug }));

@@ -56,6 +56,14 @@ export function showProject(root, slug) {
   return { ...data, slug, body, path: p.file };
 }
 
+export function setNarrative(root, slug, body) {
+  const p = projectPaths(root, slug);
+  if (!fs.existsSync(p.file)) throw new Error(`No such project: ${slug}`);
+  const { data } = readDoc(p.file);
+  writeDoc(p.file, data, body.endsWith('\n') ? body : `${body}\n`);
+  return { slug };
+}
+
 export function setStage(root, slug, stage) {
   assertEnum(stage, STAGES, 'stage');
   const p = projectPaths(root, slug);

@@ -106,6 +106,53 @@ function markdownInto(container, src) {
   }
 }
 
+// Rendered markdown with a click-to-edit affordance. `host` is a .editable div;
+// getBody() returns the current text; onSave(text) persists it.
+function editableMarkdown(host, getBody, onSave) {
+  const showView = () => {
+    const view = h('div', { class: 'markdown' });
+    markdownInto(view, getBody() || '_Empty — click Edit to write._');
+    host.replaceChildren(h('button', { class: 'btn small edit-btn', onclick: showEdit }, '✎ Edit'), view);
+  };
+  const showEdit = () => {
+    const ta = h('textarea', { class: 'inline-editor', spellcheck: 'false' });
+    ta.value = getBody() || '';
+    const save = h('button', { class: 'btn primary', onclick: async () => { await onSave(ta.value); } }, 'Save');
+    const cancel = h('button', { class: 'btn', onclick: showView }, 'Cancel');
+    host.replaceChildren(ta, h('div', { class: 'detail-actions' }, save, cancel));
+    ta.focus();
+  };
+  showView();
+}
+
+// Add a log entry or decision to a project (takes over the detail pane).
+function showMemoryForm(slug, kind) {
+  const titleInput = h('input', { type: 'text', placeholder: `${kind} title` });
+  const bodyArea = h('textarea', { class: 'inline-editor', spellcheck: 'false', placeholder: kind === 'Decision' ? 'Context / Decision / Consequences' : 'What happened' });
+  const create = h('button', { class: 'btn primary', onclick: async () => {
+    try {
+      if (kind === 'Decision') {
+        if (!titleInput.value.trim()) return toast('Title is required');
+        await window.verqury.addDecision(slug, { title: titleInput.value.trim(), body: bodyArea.value });
+      } else {
+        const text = bodyArea.value.trim() || titleInput.value.trim();
+        if (!text) return toast('Add some text');
+        await window.verqury.addLog(slug, { text, title: titleInput.value.trim() || null });
+      }
+      toast(`${kind} added`);
+      selectProject(slug);
+    } catch (err) { toast(err.message); }
+  } }, 'Save');
+  const cancel = h('button', { class: 'btn', onclick: () => selectProject(slug) }, 'Cancel');
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: `New ${kind.toLowerCase()} · ${slug}` })),
+    h('div', { class: 'form' },
+      h('label', {}, 'Title', titleInput),
+      h('label', {}, kind === 'Decision' ? 'Body' : 'Entry', bodyArea),
+      h('div', { class: 'detail-actions' }, create, cancel)),
+  );
+}
+
 /* ---------- sidebar lists ---------- */
 
 function renderProjectList() {
@@ -440,10 +487,18 @@ function renderProjectDetail(project, timeline) {
     sub.append(h('a', { href: link.url, onclick: (e) => { e.preventDefault(); window.verqury.openExternal(link.url); }, text: link.label }));
   }
 
-  const narrative = h('div', { class: 'markdown' });
-  markdownInto(narrative, project.body ?? '');
+  const narrative = h('div', { class: 'editable' });
+  editableMarkdown(
+    narrative,
+    () => project.body ?? '',
+    async (val) => { await window.verqury.setNarrative(project.slug, val); toast('Narrative saved'); selectProject(project.slug); },
+  );
 
-  const timelineEl = h('div', { class: 'timeline' }, h('h2', { text: 'Memory timeline' }));
+  const timelineEl = h('div', { class: 'timeline' },
+    h('div', { class: 'timeline-head' },
+      h('h2', { text: 'Memory timeline' }),
+      h('button', { class: 'btn small', onclick: () => showMemoryForm(project.slug, 'Log') }, '＋ Log'),
+      h('button', { class: 'btn small', onclick: () => showMemoryForm(project.slug, 'Decision') }, '＋ Decision')));
   if (!timeline.length) timelineEl.append(h('div', { class: 'detail-sub', text: 'No log entries or decisions yet.' }));
   for (const entry of timeline) {
     const kind = entry.type === 'decision' ? `decision #${entry.number}` : 'log';
@@ -641,8 +696,12 @@ function renderGuidanceDetail(g) {
     document.createTextNode(`  ${g.scope === 'global' ? 'global' : `project · ${g.scope}`}`));
   for (const t of g.tags ?? []) meta.append(h('span', { class: 'badge', text: t }));
 
-  const body = h('div', { class: 'markdown' });
-  markdownInto(body, g.body ?? '');
+  const body = h('div', { class: 'editable' });
+  editableMarkdown(
+    body,
+    () => g.body ?? '',
+    async (val) => { await window.verqury.setGuidanceBody(g.scope, g.slug, val); toast('Saved'); selectGuidance(g.scope, g.slug); },
+  );
 
   detailEl.replaceChildren(
     h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: g.title })),

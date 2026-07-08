@@ -357,3 +357,25 @@ body.dragging::after {
 .search:focus { outline: 2px solid var(--accent); outline-offset: 1px; box-shadow: 0 0 0 4px var(--accent-soft); }
 
 .badge.stage, .badge.kind { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+
+/* Inline editing */
+.editable { position: relative; }
+.edit-btn { position: absolute; top: 10px; right: 10px; z-index: 2; opacity: 0.55; }
+.edit-btn:hover { opacity: 1; }
+.btn.small { padding: 3px 9px; font-size: 12px; }
+.inline-editor {
+  width: 100%;
+  min-height: 240px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.inline-editor:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.timeline-head { display: flex; align-items: center; gap: 8px; }
+.timeline-head h2 { flex: 1; margin: 0; }

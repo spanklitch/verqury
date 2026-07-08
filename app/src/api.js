@@ -15,10 +15,14 @@ import {
   listProjects,
   showProject,
   setStage,
+  setNarrative,
   projectTimeline,
+  addLog,
+  addDecision,
   addGuidance,
   listAllGuidance,
   showGuidance,
+  setGuidanceBody,
   promoteGuidance as corePromoteGuidance,
   addArtifact,
   listArtifacts,
@@ -90,6 +94,22 @@ export function getProject(root, slug) {
 
 export function changeStage(root, slug, stage) {
   return setStage(root, slug, stage);
+}
+
+export function editNarrative(root, slug, body) {
+  return setNarrative(root, slug, body);
+}
+
+export function createLog(root, slug, payload) {
+  return addLog(root, slug, payload);
+}
+
+export function createDecision(root, slug, payload) {
+  return addDecision(root, slug, payload);
+}
+
+export function editGuidanceBody(root, scope, slug, body) {
+  return setGuidanceBody(root, scope, slug, body);
 }
 
 export function getStages() {

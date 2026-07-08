@@ -102,6 +102,10 @@ function setupIpc() {
   ipcMain.handle('projects:list', () => api.getProjects(root));
   ipcMain.handle('project:get', (_e, slug) => api.getProject(root, slug));
   ipcMain.handle('project:setStage', (_e, slug, stage) => api.changeStage(root, slug, stage));
+  ipcMain.handle('project:setNarrative', (_e, slug, body) => api.editNarrative(root, slug, body));
+  ipcMain.handle('log:add', (_e, slug, payload) => api.createLog(root, slug, payload));
+  ipcMain.handle('decision:add', (_e, slug, payload) => api.createDecision(root, slug, payload));
+  ipcMain.handle('guidance:setBody', (_e, scope, slug, body) => api.editGuidanceBody(root, scope, slug, body));
   ipcMain.handle('search:query', (_e, query) => api.runSearch(root, query));
 
   ipcMain.handle('guidance:kinds', () => api.getGuidanceKinds());

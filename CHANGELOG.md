@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Edit Verqury's own content in-app: inline narrative editing, **+ Log** / **+ Decision**
+  on the project timeline, and editable guidance bodies. No more leaving the app to write.
 ### Changed
 ### Fixed
 

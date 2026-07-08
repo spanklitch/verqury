@@ -10,6 +10,10 @@ contextBridge.exposeInMainWorld('verqury', {
   listProjects: () => ipcRenderer.invoke('projects:list'),
   getProject: (slug) => ipcRenderer.invoke('project:get', slug),
   setStage: (slug, stage) => ipcRenderer.invoke('project:setStage', slug, stage),
+  setNarrative: (slug, body) => ipcRenderer.invoke('project:setNarrative', slug, body),
+  addLog: (slug, payload) => ipcRenderer.invoke('log:add', slug, payload),
+  addDecision: (slug, payload) => ipcRenderer.invoke('decision:add', slug, payload),
+  setGuidanceBody: (scope, slug, body) => ipcRenderer.invoke('guidance:setBody', scope, slug, body),
   search: (query) => ipcRenderer.invoke('search:query', query),
 
   guidanceKinds: () => ipcRenderer.invoke('guidance:kinds'),
