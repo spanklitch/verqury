@@ -365,3 +365,12 @@ self-contained variant is a post-0.1 follow-up.
 
 **ALL 9 PHASES DONE. Verqury 0.1.0 is built and verified; it ships the moment Gary pushes
 the commits + tag.**
+
+### 2026-07-08 — SHIPPED 🚀
+Commits pushed (`f96f9af` on `main`); annotated **`v0.1.0` tag created at f96f9af, verified,
+and pushed to origin**. Release artifacts built locally: `app/dist/Verqury-0.1.0.AppImage`
+(121 MB) + `verqury-app_0.1.0_amd64.deb` (83 MB). **Verqury 0.1.0 is released.** The build
+plan is complete end to end (Phases 0–8). Post-0.1 ideas live in the plan's "Deferred" list.
+Optional follow-ups: a GitHub Release with the AppImage/deb attached (`gh release create
+v0.1.0 app/dist/Verqury-0.1.0.AppImage app/dist/verqury-app_0.1.0_amd64.deb`); a
+flawedworks.com/verqury page; back-import Mebit/ZAGNALS as seed data (plan §7 decision).
