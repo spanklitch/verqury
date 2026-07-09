@@ -3,6 +3,7 @@
 // this stage allows: change a project's stage, create guidance, promote guidance.
 // No free-form body editing — that would drift toward an IDE (anti-goal).
 import { renderMarkdown } from '../src/markdown.js';
+import { mountTerminal } from './terminal.js';
 
 const el = (sel) => document.querySelector(sel);
 const listEl = el('#list');
@@ -825,6 +826,7 @@ function setMode(mode) {
   state.mode = mode;
   for (const tab of document.querySelectorAll('.tab')) tab.classList.toggle('active', tab.dataset.mode === mode);
   searchEl.value = '';
+  detailEl.className = 'detail'; // reset any mode-specific layout (e.g. terminal)
   if (mode === 'projects') {
     renderProjectList();
     if (state.activeProject) selectProject(state.activeProject);
@@ -838,6 +840,13 @@ function setMode(mode) {
   } else if (mode === 'tasks') {
     renderTaskList();
     detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select a task, or create a new one.' }));
+  } else if (mode === 'terminal') {
+    listEl.replaceChildren(
+      h('div', { class: 'section-label', text: 'Terminal' }),
+      h('div', { class: 'project-card', text: 'Your shell, running inside Verqury. Type as normal, or drag text onto it.' }),
+    );
+    detailEl.className = 'detail terminal-mode';
+    mountTerminal(detailEl);
   } else {
     renderSettingsList();
     detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select or add an adapter (an AI surface).' }));
@@ -856,6 +865,7 @@ searchEl.addEventListener('input', () => {
       if (state.mode === 'guidance') return renderGuidanceList();
       if (state.mode === 'inbox') return renderInboxList();
       if (state.mode === 'tasks') return renderTaskList();
+      if (state.mode === 'terminal') return;
       return renderSettingsList();
     }
     renderSearchResults(await window.verqury.search(q));

@@ -8,7 +8,7 @@ const node = {
 
 export default [
   {
-    ignores: ['**/node_modules/**', '**/dist/**'],
+    ignores: ['**/node_modules/**', '**/dist/**', '**/vendor/**'],
   },
   {
     // ESM sources (core + app main/logic)
@@ -44,6 +44,7 @@ export default [
         window: 'readonly',
         document: 'readonly',
         localStorage: 'readonly',
+        ResizeObserver: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
       },

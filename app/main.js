@@ -6,7 +6,35 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+
+// Embedded terminal: node-pty spawns a real PTY in the main process and streams
+// it to the xterm.js widget in the renderer (ADR-0009). node-pty is a native
+// module built for Electron's ABI (electron-rebuild), loaded only here.
+let ptyProc = null;
+function ptyStart(shell) {
+  if (ptyProc) return { alreadyRunning: true };
+  const nodePty = require('node-pty');
+  const sh = shell || process.env.SHELL || 'bash';
+  ptyProc = nodePty.spawn(sh, [], {
+    name: 'xterm-color',
+    cols: 80,
+    rows: 24,
+    cwd: process.env.HOME,
+    env: process.env,
+  });
+  ptyProc.onData((d) => {
+    if (win && !win.isDestroyed()) win.webContents.send('pty:data', d);
+  });
+  ptyProc.onExit(() => {
+    ptyProc = null;
+    if (win && !win.isDestroyed()) win.webContents.send('pty:exit');
+  });
+  return { started: true, shell: sh };
+}
 import { addLog } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
@@ -157,6 +185,10 @@ function setupIpc() {
   ipcMain.handle('adapter:update', (_e, slug, patch) => api.updateAdapter(root, slug, patch));
   ipcMain.handle('adapter:remove', (_e, slug) => api.removeAdapter(root, slug));
   ipcMain.handle('adapter:launch', (_e, adapterSlug, projectSlug) => launchAdapter(adapterSlug, projectSlug));
+
+  ipcMain.handle('pty:start', (_e, shell) => ptyStart(shell));
+  ipcMain.on('pty:input', (_e, data) => { if (ptyProc) ptyProc.write(data); });
+  ipcMain.on('pty:resize', (_e, cols, rows) => { if (ptyProc) { try { ptyProc.resize(cols, rows); } catch { /* size race */ } } });
 }
 
 function notify(body) {
@@ -376,6 +408,15 @@ async function runVerify(outDir) {
     result.adapterLaunched = fs.existsSync(sentinel);
     result.adapterHandoffCopied = /build context/.test(clipboard.readText());
 
+    // (10) embedded terminal: open the tab, run a command through the PTY, capture it.
+    await dom("document.querySelector('.tab[data-mode=terminal]').click()");
+    await wait(700);
+    result.terminalMounted = await dom("!!document.querySelector('.term-host .xterm')");
+    await dom("window.verqury.ptyInput('echo hello from the Verqury terminal && uname -sm\\n')");
+    await wait(800);
+    const termImg = await win.webContents.capturePage();
+    fs.writeFileSync(path.join(outDir, 'term.png'), termImg.toPNG());
+
     const image = await win.webContents.capturePage();
     const png = image.toPNG();
     if (png.length) fs.writeFileSync(path.join(outDir, 'shot.png'), png);
@@ -408,4 +449,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());
-app.on('before-quit', () => watcher?.close());
+app.on('before-quit', () => {
+  watcher?.close();
+  try { ptyProc?.kill(); } catch { /* already gone */ }
+});

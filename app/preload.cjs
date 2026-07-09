@@ -58,4 +58,10 @@ contextBridge.exposeInMainWorld('verqury', {
 
   onDataChanged: (cb) => ipcRenderer.on('data:changed', () => cb()),
   onArtifactCaptured: (cb) => ipcRenderer.on('artifact:captured', (_e, info) => cb(info)),
+
+  ptyStart: (shell) => ipcRenderer.invoke('pty:start', shell),
+  ptyInput: (data) => ipcRenderer.send('pty:input', data),
+  ptyResize: (cols, rows) => ipcRenderer.send('pty:resize', cols, rows),
+  onPtyData: (cb) => ipcRenderer.on('pty:data', (_e, d) => cb(d)),
+  onPtyExit: (cb) => ipcRenderer.on('pty:exit', () => cb()),
 });

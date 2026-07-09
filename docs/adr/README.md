@@ -20,3 +20,4 @@ New records start from [`0000-template.md`](0000-template.md) and take the next 
 | [0006](0006-search-runs-out-of-process.md) | Search runs out-of-process; Electron never loads better-sqlite3 | Accepted |
 | [0007](0007-packets-are-global-templates.md) | Packets are global reusable templates, not per-project files | Accepted |
 | [0008](0008-packaged-search-uses-electron-node.md) | Packaged search runs the CLI under Electron's embedded node | Accepted |
+| [0009](0009-embedded-terminal.md) | Embed a terminal — Verqury becomes an agent workbench | Accepted |
