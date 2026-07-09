@@ -382,5 +382,6 @@ body.dragging::after {
 
 /* Embedded terminal */
 .detail.terminal-mode { max-width: none; height: 100%; padding: 8px; overflow: hidden; }
-.term-host { width: 100%; height: 100%; }
+.term-toolbar { display: flex; gap: 6px; margin-bottom: 6px; height: 30px; }
+.term-host { width: 100%; height: calc(100% - 44px); border-radius: 8px; overflow: hidden; background: #0e1220; }
 .term-host .xterm { height: 100%; padding: 8px; }

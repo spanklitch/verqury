@@ -17,14 +17,14 @@ export function getAdapter(root, slug) {
   return listAdapters(root).find((a) => a.slug === slug) ?? null;
 }
 
-export function addAdapter(root, { slug, label, command = '', packet = null, notes = '' } = {}) {
+export function addAdapter(root, { slug, label, command = '', packet = null, notes = '', target = 'external' } = {}) {
   if (!label || !String(label).trim()) throw new Error('Adapter label is required');
   const finalSlug = slugify(slug || label);
   if (!finalSlug) throw new Error(`Could not derive a slug from "${label}"`);
   const config = readConfig(root);
   config.adapters = config.adapters ?? [];
   if (config.adapters.some((a) => a.slug === finalSlug)) throw new Error(`Adapter already exists: ${finalSlug}`);
-  const adapter = { slug: finalSlug, label, command, packet, notes };
+  const adapter = { slug: finalSlug, label, command, packet, notes, target };
   config.adapters.push(adapter);
   writeConfig(root, config);
   return adapter;
@@ -60,9 +60,10 @@ export const STARTER_ADAPTERS = [
   {
     slug: 'claude-code',
     label: 'Claude Code',
-    command: 'xfce4-terminal --working-directory={{repo}} --command=claude',
+    command: 'claude',
     packet: 'terminal-build',
-    notes: 'Terminal-first AI coding agent, opened at the project repo.',
+    target: 'terminal',
+    notes: 'Terminal-first AI coding agent, run in the embedded terminal at the project repo.',
   },
   {
     slug: 'claude-chat',

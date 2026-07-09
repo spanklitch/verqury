@@ -4,6 +4,8 @@ const node = {
   URL: 'readonly',
   setTimeout: 'readonly',
   clearTimeout: 'readonly',
+  setInterval: 'readonly',
+  clearInterval: 'readonly',
 };
 
 export default [
@@ -45,6 +47,7 @@ export default [
         document: 'readonly',
         localStorage: 'readonly',
         ResizeObserver: 'readonly',
+        requestAnimationFrame: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
       },

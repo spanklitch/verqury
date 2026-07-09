@@ -39,8 +39,18 @@ import { addLog } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
 
-// Launch an adapter for a project: copy its handoff packet to the clipboard, then
-// spawn its (substituted) command detached so it outlives the app (ADR-0004).
+const shQuote = (s) => `'${String(s).replaceAll("'", "'\\''")}'`;
+
+// Track text WE put on the clipboard, so clipboard-watch doesn't re-capture it.
+let selfWrite = '';
+function writeClip(text) {
+  selfWrite = String(text ?? '');
+  clipboard.writeText(selfWrite);
+}
+
+// Launch an adapter for a project. `target: 'terminal'` runs the command in the
+// embedded terminal at the repo; otherwise it spawns detached externally (ADR-0004).
+// Either way the handoff packet is copied to the clipboard.
 function launchAdapter(adapterSlug, projectSlug) {
   const adapter = api.getOneAdapter(root, adapterSlug);
   if (!adapter) throw new Error(`No such adapter: ${adapterSlug}`);
@@ -49,17 +59,23 @@ function launchAdapter(adapterSlug, projectSlug) {
   let copiedPacket = false;
   if (adapter.packet) {
     try {
-      clipboard.writeText(api.renderPacket(root, adapter.packet, projectSlug).text);
+      writeClip(api.renderPacket(root, adapter.packet, projectSlug).text);
       copiedPacket = true;
     } catch {
       // packet may have been deleted; launch anyway
     }
   }
-  if (command.trim()) {
-    const child = spawn(command, { shell: true, detached: true, stdio: 'ignore' });
-    child.unref();
+  if (adapter.target === 'terminal') {
+    ptyStart();
+    const cd = project.repo ? `cd ${shQuote(project.repo)} && ` : '';
+    if (ptyProc) ptyProc.write(`${cd}${command}\n`);
+    if (win && !win.isDestroyed()) win.webContents.send('nav:terminal');
+    return { launched: true, target: 'terminal', command, copiedPacket };
   }
-  return { launched: Boolean(command.trim()), command, copiedPacket };
+  if (command.trim()) {
+    spawn(command, { shell: true, detached: true, stdio: 'ignore' }).unref();
+  }
+  return { launched: Boolean(command.trim()), target: 'external', command, copiedPacket };
 }
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -142,7 +158,8 @@ function setupIpc() {
   ipcMain.handle('guidance:create', (_e, payload) => api.createGuidance(root, payload));
   ipcMain.handle('guidance:promote', (_e, projectSlug, slug) => api.promoteGuidance(root, projectSlug, slug));
 
-  ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(String(text ?? '')));
+  ipcMain.handle('clipboard:write', (_e, text) => writeClip(text));
+  ipcMain.handle('clipboard:read', () => clipboard.readText());
   ipcMain.handle('shell:openExternal', (_e, url) => {
     if (/^https?:\/\//.test(String(url))) shell.openExternal(url);
   });
@@ -174,7 +191,7 @@ function setupIpc() {
   ipcMain.handle('task:delete', (_e, projectSlug, id) => api.deleteTask(root, projectSlug, id));
   ipcMain.handle('task:handoff', (_e, projectSlug, id) => {
     const { payload } = api.renderHandoff(root, projectSlug, id);
-    clipboard.writeText(payload);
+    writeClip(payload);
     api.updateTask(root, projectSlug, id, { status: 'handed-off' });
     return { payload };
   });
@@ -189,6 +206,15 @@ function setupIpc() {
   ipcMain.handle('pty:start', (_e, shell) => ptyStart(shell));
   ipcMain.on('pty:input', (_e, data) => { if (ptyProc) ptyProc.write(data); });
   ipcMain.on('pty:resize', (_e, cols, rows) => { if (ptyProc) { try { ptyProc.resize(cols, rows); } catch { /* size race */ } } });
+  // Send a block of text to the terminal as a bracketed paste (so CLIs treat it
+  // as pasted input, not line-by-line), and switch to the Terminal tab.
+  ipcMain.handle('pty:send', (_e, text) => {
+    ptyStart();
+    if (ptyProc) ptyProc.write(`\x1b[200~${String(text ?? '')}\x1b[201~`);
+    if (win && !win.isDestroyed()) win.webContents.send('nav:terminal');
+  });
+  ipcMain.handle('clipboard:watch', (_e, on) => { setClipboardWatch(Boolean(on)); return clipboardWatch; });
+  ipcMain.handle('clipboard:watching', () => clipboardWatch);
 }
 
 function notify(body) {
@@ -221,6 +247,29 @@ function captureText(text) {
   return finishCapture(api.captureClipboard(root, () => String(text ?? '')));
 }
 
+// Clipboard watch: passively file everything you copy (off by default). Files
+// quietly — refreshes lists without yanking focus to the Inbox — and skips text
+// Verqury itself put on the clipboard.
+let clipboardWatch = false;
+let watchSeen = '';
+function captureTextQuiet(text) {
+  const outcome = api.captureClipboard(root, () => String(text ?? ''));
+  if (!outcome.ok) return;
+  api.refreshIndex(root);
+  if (win && !win.isDestroyed()) win.webContents.send('data:changed');
+}
+function pollClipboard() {
+  if (!clipboardWatch) return;
+  const cur = clipboard.readText();
+  if (cur === watchSeen) return;
+  watchSeen = cur;
+  if (cur.trim() && cur !== selfWrite) captureTextQuiet(cur);
+}
+function setClipboardWatch(on) {
+  clipboardWatch = on;
+  watchSeen = clipboard.readText(); // don't capture whatever's already on the clipboard
+}
+
 function setupHotkey() {
   const accel = 'Control+Alt+C';
   if (!globalShortcut.register(accel, captureFromClipboard)) {
@@ -240,6 +289,12 @@ function setupWatcher() {
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: 'Show Verqury', click: () => (win && !win.isDestroyed() ? win.show() : createWindow()) },
+    {
+      label: 'Watch clipboard (auto-capture)',
+      type: 'checkbox',
+      checked: clipboardWatch,
+      click: (item) => setClipboardWatch(item.checked),
+    },
     {
       label: 'Start on login (to tray)',
       type: 'checkbox',
@@ -397,7 +452,9 @@ async function runVerify(outDir) {
       const ins = document.querySelectorAll('.form input');
       ins[0].value = 'Harness';
       ins[1].value = ${JSON.stringify(`echo ok > ${sentinel}`)};
-      document.querySelector('.form select').value = 'terminal-build';
+      const sels = document.querySelectorAll('.form select');
+      sels[0].value = 'external';       // run-in target
+      sels[1].value = 'terminal-build'; // handoff packet
       [...document.querySelectorAll('.detail-actions button')].find((b) => b.textContent === 'Save').click();
     })()`);
     await wait(350);
@@ -412,10 +469,14 @@ async function runVerify(outDir) {
     await dom("document.querySelector('.tab[data-mode=terminal]').click()");
     await wait(700);
     result.terminalMounted = await dom("!!document.querySelector('.term-host .xterm')");
-    await dom("window.verqury.ptyInput('echo hello from the Verqury terminal && uname -sm\\n')");
-    await wait(800);
-    const termImg = await win.webContents.capturePage();
-    fs.writeFileSync(path.join(outDir, 'term.png'), termImg.toPNG());
+    await dom("window.verqury.ptyInput('echo hello from the Verqury terminal\\n')");
+    await wait(600);
+    // The shell rendered a prompt into the terminal (DOM renderer content check).
+    result.terminalHasPrompt = await dom("(document.querySelector('.term-host .xterm-rows')?.innerText||'').includes('$')");
+    // A terminal-target adapter routes its command into the embedded terminal.
+    api.createAdapter(root, { slug: 'harness-term', label: 'HarnessTerm', command: 'echo TERMINAL_ADAPTER_OK', target: 'terminal', packet: null, notes: '' });
+    const launchRes = await dom(`window.verqury.launchAdapter('harness-term', ${JSON.stringify(slug)})`);
+    result.terminalAdapterRouted = Boolean(launchRes && launchRes.target === 'terminal');
 
     const image = await win.webContents.capturePage();
     const png = image.toPNG();
@@ -434,6 +495,7 @@ app.whenReady().then(() => {
   setupWatcher();
   setupTray();
   setupHotkey();
+  setInterval(pollClipboard, 1000); // clipboard-watch poll (no-op unless enabled)
 
   const verifyDir = process.env.VERQURY_VERIFY;
   if (verifyDir) win.webContents.once('did-finish-load', () => setTimeout(() => runVerify(verifyDir), 800));

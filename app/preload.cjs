@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('verqury', {
   promoteGuidance: (projectSlug, slug) => ipcRenderer.invoke('guidance:promote', projectSlug, slug),
 
   copyToClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
+  readClipboard: () => ipcRenderer.invoke('clipboard:read'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
   artifactKinds: () => ipcRenderer.invoke('artifact:kinds'),
@@ -62,6 +63,10 @@ contextBridge.exposeInMainWorld('verqury', {
   ptyStart: (shell) => ipcRenderer.invoke('pty:start', shell),
   ptyInput: (data) => ipcRenderer.send('pty:input', data),
   ptyResize: (cols, rows) => ipcRenderer.send('pty:resize', cols, rows),
+  ptySend: (text) => ipcRenderer.invoke('pty:send', text),
   onPtyData: (cb) => ipcRenderer.on('pty:data', (_e, d) => cb(d)),
   onPtyExit: (cb) => ipcRenderer.on('pty:exit', () => cb()),
+  onNavTerminal: (cb) => ipcRenderer.on('nav:terminal', () => cb()),
+  clipboardWatch: (on) => ipcRenderer.invoke('clipboard:watch', on),
+  clipboardWatching: () => ipcRenderer.invoke('clipboard:watching'),
 });

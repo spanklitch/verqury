@@ -567,12 +567,18 @@ async function showAdapterForm(slug) {
     if (existing?.packet === p.slug) o.selected = true;
     packetSel.append(o);
   }
+  const targetSel = h('select', {});
+  for (const [val, txt] of [['terminal', 'Embedded terminal (in-app)'], ['external', 'External (spawn detached)']]) {
+    const o = h('option', { value: val, text: txt });
+    if ((existing?.target ?? 'external') === val) o.selected = true;
+    targetSel.append(o);
+  }
   const notesInput = h('textarea', { placeholder: 'Notes' });
   notesInput.value = existing?.notes ?? '';
 
   const save = h('button', { class: 'btn primary', onclick: async () => {
     if (!labelInput.value.trim()) return toast('Label is required');
-    const payload = { label: labelInput.value.trim(), command: commandInput.value, packet: packetSel.value || null, notes: notesInput.value };
+    const payload = { label: labelInput.value.trim(), command: commandInput.value, packet: packetSel.value || null, notes: notesInput.value, target: targetSel.value };
     try {
       if (existing) await window.verqury.updateAdapter(existing.slug, payload);
       else state.activeAdapter = (await window.verqury.addAdapter(payload)).slug;
@@ -598,7 +604,7 @@ async function showAdapterForm(slug) {
     h('div', { class: 'detail-sub', text: 'An AI surface defined purely by config — a launch command plus a handoff packet. Adding one needs no code (ADR-0004). Use {{repo}} and {{project.name}} in the command.' }),
     h('div', { class: 'form' },
       h('label', {}, 'Label', labelInput),
-      h('label', {}, 'Launch command', commandInput),
+      h('div', { class: 'form-row' }, h('label', {}, 'Launch command', commandInput), h('label', {}, 'Run in', targetSel)),
       h('label', {}, 'Handoff packet', packetSel),
       h('label', {}, 'Notes', notesInput),
       h('div', { class: 'detail-actions' }, ...buttons)),
@@ -666,6 +672,7 @@ async function showBootstrap(projectSlug) {
     preview.textContent = r.text;
     const buttons = [
       h('button', { class: 'btn primary', onclick: () => { window.verqury.copyToClipboard(r.text); toast('Copied to clipboard'); } }, 'Copy to clipboard'),
+      h('button', { class: 'btn', onclick: () => { window.verqury.ptySend(r.text); toast('Sent to terminal'); } }, '→ Terminal'),
     ];
     if (r.output) {
       buttons.push(h('button', { class: 'btn', onclick: async () => {
@@ -687,7 +694,8 @@ async function showBootstrap(projectSlug) {
 
 function renderGuidanceDetail(g) {
   const actions = h('div', { class: 'detail-actions' },
-    h('button', { class: 'btn', onclick: () => { window.verqury.copyToClipboard(g.body ?? ''); toast('Copied to clipboard'); } }, 'Copy'));
+    h('button', { class: 'btn', onclick: () => { window.verqury.copyToClipboard(g.body ?? ''); toast('Copied to clipboard'); } }, 'Copy'),
+    h('button', { class: 'btn', onclick: () => { window.verqury.ptySend(g.body ?? ''); toast('Sent to terminal'); } }, '→ Terminal'));
   if (g.scope !== 'global') {
     actions.append(h('button', { class: 'btn primary', onclick: () => onPromote(g.scope, g.slug) }, 'Promote to global'));
   }
@@ -900,6 +908,7 @@ async function init() {
     setMode('inbox');
     refreshInbox().then(() => info && selectArtifact(info.project, info.id));
   });
+  window.verqury.onNavTerminal(() => setMode('terminal'));
   window.__verquryReady = true; // signal for headless verification
 }
 
