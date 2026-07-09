@@ -7,7 +7,7 @@ memory, reusable guidance, captured artifacts, session bootstrapping, and task
 routing, from first concept through build, release, and marketing.
 
 - **Platform:** Linux x64 (X11) desktop — Node 20 + Electron shell, plain-JS renderer
-- **Status:** **v0.1.2 released** (2026-07-08) — all nine build-plan phases complete; dark-navy UI, drag-and-drop capture, packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
+- **Status:** **v0.2.0 released** (2026-07-09) — agent workbench with an embedded terminal, in-app editing, dark-navy UI; packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
 - **Publisher:** [FlawedWorks](https://flawedworks.com)
 
 > Verqury is a workflow layer, not an IDE — and deliberately not a chat interface,

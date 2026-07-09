@@ -8,10 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Edit Verqury's own content in-app: inline narrative editing, **+ Log** / **+ Decision**
-  on the project timeline, and editable guidance bodies. No more leaving the app to write.
 ### Changed
 ### Fixed
+
+## [0.2.0] - 2026-07-09
+
+Verqury becomes an **agent workbench** — an embedded terminal at the center,
+with the library, clipboard organizer, and memory around it ([ADR-0009](docs/adr/0009-embedded-terminal.md)).
+
+### Added
+- **Embedded terminal** (node-pty + xterm.js): run your shell and AI CLIs inside
+  a Verqury pane. Adapters gain a `target` — `terminal` launches the command in
+  the embedded terminal at the project repo (the Claude Code starter now runs
+  in-app); `external` keeps the detached-spawn behavior.
+- **Send to terminal** from guidance docs and the bootstrap packet panel.
+- Terminal toolbar (Capture selection → Inbox, Copy, Paste), Ctrl+Shift+C/V, and
+  drag-text-onto-the-terminal-to-type.
+- **Clipboard-watch** tray toggle: passively file everything you copy into the
+  active project (off by default).
+- Edit Verqury's own content in-app: inline narrative editing, **+ Log** /
+  **+ Decision** on the timeline, and editable guidance bodies.
+
+### Changed
+- Identity shift from "layer" to "agent workbench" — the no-embedded-terminal
+  anti-goal is superseded ([ADR-0009](docs/adr/0009-embedded-terminal.md)).
 
 ## [0.1.2] - 2026-07-08
 
@@ -98,7 +118,8 @@ and a config-driven adapter registry.
 - Renamed product Velora → **Verqury** (prior name in use by another company);
   applies to package names, CLI command, data root, and all docs.
 
-[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/spanklitch/verqury/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/spanklitch/verqury/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/spanklitch/verqury/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/spanklitch/verqury/releases/tag/v0.1.0
