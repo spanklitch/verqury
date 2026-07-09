@@ -158,17 +158,18 @@ body {
 }
 .timeline-entry .body { color: var(--ink-soft); margin-top: 3px; }
 
-/* Nav tabs */
-.tabs { display: flex; gap: 4px; padding: 10px 12px 0; }
+/* Nav tabs — wrap so all of them fit the sidebar width */
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 12px 0; }
 .tab {
-  flex: 1;
-  padding: 7px 10px;
+  flex: 1 1 auto;
+  min-width: 70px;
+  padding: 7px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
   color: var(--ink-soft);
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   cursor: pointer;
 }
 .tab.active { background: var(--accent); color: var(--accent-ink); border-color: transparent; }

@@ -1,11 +1,23 @@
 // Embedded terminal widget: xterm.js in the renderer, wired to the main-process
 // PTY over the preload bridge. Runs your real shell and CLIs inside Verqury.
+//
+// The xterm instance and its container are created ONCE (open() only works once)
+// and the container is moved in/out of the view on tab switches — so the session
+// stays alive and visible when you navigate away and back.
 import { Terminal } from './vendor/xterm.mjs';
 import { FitAddon } from './vendor/addon-fit.mjs';
 
 let term = null;
 let fit = null;
+let termWrap = null;
 let started = false;
+
+function sync() {
+  try {
+    fit.fit();
+    window.verqury.ptyResize(term.cols, term.rows);
+  } catch { /* not laid out yet */ }
+}
 
 function ensureTerm() {
   if (term) return;
@@ -27,16 +39,22 @@ function ensureTerm() {
     if (e.code === 'KeyV') { window.verqury.readClipboard().then((t) => t && window.verqury.ptyInput(t)); return false; }
     return true;
   });
+
+  // Persistent container — created and opened once, then moved between mounts.
+  termWrap = document.createElement('div');
+  termWrap.className = 'term-host';
+  term.open(termWrap);
+  termWrap.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
+  termWrap.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const t = e.dataTransfer.getData('text/plain');
+    if (t) window.verqury.ptyInput(t);
+  });
+  new ResizeObserver(() => sync()).observe(termWrap);
 }
 
-function sync() {
-  try {
-    fit.fit();
-    window.verqury.ptyResize(term.cols, term.rows);
-  } catch { /* not laid out yet */ }
-}
-
-// Mount (or re-mount) the terminal into `host` and start the shell once.
+// Mount the terminal into `host`: a fresh toolbar plus the persistent term container.
 export function mountTerminal(host) {
   ensureTerm();
 
@@ -59,23 +77,7 @@ export function mountTerminal(host) {
     mkBtn('Paste', 'Ctrl+Shift+V', async () => { const t = await window.verqury.readClipboard(); if (t) window.verqury.ptyInput(t); }),
   );
 
-  const wrap = document.createElement('div');
-  wrap.className = 'term-host';
-  host.replaceChildren(toolbar, wrap);
-  term.open(wrap);
-
-  // Drop highlighted text onto the terminal → type it into the shell.
-  wrap.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
-  wrap.addEventListener('drop', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const t = e.dataTransfer.getData('text/plain');
-    if (t) window.verqury.ptyInput(t);
-  });
-
-  const ro = new ResizeObserver(() => sync());
-  ro.observe(wrap);
-
+  host.replaceChildren(toolbar, termWrap); // moves the persistent container into view
   if (!started) {
     started = true;
     window.verqury.ptyStart();
@@ -84,7 +86,7 @@ export function mountTerminal(host) {
   setTimeout(sync, 150);
 }
 
-// Programmatically send text to the shell (for "Send to terminal" later).
+// Programmatically send text to the shell (for "Send to terminal").
 export function sendToTerminal(text) {
   ensureTerm();
   if (!started) { started = true; window.verqury.ptyStart(); }

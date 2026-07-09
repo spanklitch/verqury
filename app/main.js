@@ -477,6 +477,16 @@ async function runVerify(outDir) {
     api.createAdapter(root, { slug: 'harness-term', label: 'HarnessTerm', command: 'echo TERMINAL_ADAPTER_OK', target: 'terminal', packet: null, notes: '' });
     const launchRes = await dom(`window.verqury.launchAdapter('harness-term', ${JSON.stringify(slug)})`);
     result.terminalAdapterRouted = Boolean(launchRes && launchRes.target === 'terminal');
+    // Navigate away and back — the session must persist and still show a prompt.
+    await dom("document.querySelector('.tab[data-mode=projects]').click()");
+    await wait(300);
+    await dom("document.querySelector('.tab[data-mode=terminal]').click()");
+    await wait(500);
+    result.terminalPersistsOnReturn = await dom("(document.querySelector('.term-host .xterm-rows')?.innerText||'').includes('$')");
+    // Tab overflow check: all tabs fit within the sidebar (none spill past its right edge).
+    result.tabsFitSidebar = await dom("(()=>{const sb=document.querySelector('.sidebar').getBoundingClientRect();return [...document.querySelectorAll('.tab')].every(t=>t.getBoundingClientRect().right<=sb.right+1);})()");
+    await dom("document.querySelector('.tab[data-mode=projects]').click()"); // end on a normal view for the shot
+    await wait(200);
 
     const image = await win.webContents.capturePage();
     const png = image.toPNG();
