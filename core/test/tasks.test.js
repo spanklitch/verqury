@@ -55,6 +55,26 @@ test('listResumeReminders surfaces open resume tasks, active project first, clos
   assert.deepEqual(listResumeReminders(root).map((t) => t.title), ['Resume Beta']);
 });
 
+test('resumeAdapter round-trips: the code tool to relaunch from the resume strip', () => {
+  const root = tmpRoot();
+  createProject(root, { name: 'Alpha' });
+
+  // Defaults to null; can be set at creation and surfaced by listTasks.
+  const plain = addTask(root, 'alpha', { title: 'No tool', resume: true });
+  assert.equal(plain.resumeAdapter, null);
+
+  const t = addTask(root, 'alpha', { title: 'Pick up in Claude Code', resume: true, resumeAdapter: 'claude-code' });
+  assert.equal(t.resumeAdapter, 'claude-code');
+  assert.equal(listTasks(root, { project: 'alpha' }).find((x) => x.id === t.id).resumeAdapter, 'claude-code');
+  assert.equal(listResumeReminders(root).find((x) => x.id === t.id).resumeAdapter, 'claude-code');
+
+  // Can be changed and cleared via updateTask (how the detail picker persists it).
+  updateTask(root, 'alpha', t.id, { resumeAdapter: 'cursor' });
+  assert.equal(listResumeReminders(root).find((x) => x.id === t.id).resumeAdapter, 'cursor');
+  updateTask(root, 'alpha', t.id, { resumeAdapter: null });
+  assert.equal(listResumeReminders(root).find((x) => x.id === t.id).resumeAdapter, null);
+});
+
 test('renderHandoff includes surface packet context and the task payload', () => {
   const root = tmpRoot();
   createProject(root, { name: 'Portal', stage: 'build' });

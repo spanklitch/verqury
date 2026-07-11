@@ -342,15 +342,25 @@ async function renderResumeStrip() {
     resumeEl.replaceChildren();
     return;
   }
-  const cards = reminders.map((t) =>
-    h('div', { class: 'resume-card' },
+  const cards = reminders.map((t) => {
+    const adapter = t.resumeAdapter ? state.adapters.find((a) => a.slug === t.resumeAdapter) : null;
+    const resumeBtn = t.resumeAdapter
+      ? h('button', {
+          class: 'btn small primary',
+          title: `Relaunch ${adapter ? adapter.label : t.resumeAdapter} at ${t.project} and jump back in`,
+          onclick: async () => { await window.verqury.launchAdapter(t.resumeAdapter, t.project); toast(`Launching ${adapter ? adapter.label : t.resumeAdapter}…`); },
+        }, `▶ Resume in ${adapter ? adapter.label : t.resumeAdapter}`)
+      : null;
+    return h('div', { class: 'resume-card' },
       h('span', { class: 'resume-text' },
         h('span', { class: 'resume-proj', text: t.project }),
         h('span', { text: t.title })),
       h('span', { class: 'resume-actions' },
+        resumeBtn,
         h('button', { class: 'btn small', title: 'Open this task', onclick: () => { setMode('tasks'); selectTask(t.project, t.id); } }, 'Open'),
         h('button', { class: 'btn small', title: 'Hide until next time you open Verqury', onclick: async () => { state.resumeSnoozed.add(t.id); await renderResumeStrip(); } }, 'Snooze'),
-        h('button', { class: 'btn small', title: 'Mark done — clears the reminder', onclick: async () => { await window.verqury.updateTask(t.project, t.id, { status: 'done' }); toast('Reminder done'); await refreshTasks(); await renderResumeStrip(); } }, 'Done'))));
+        h('button', { class: 'btn small', title: 'Mark done — clears the reminder', onclick: async () => { await window.verqury.updateTask(t.project, t.id, { status: 'done' }); toast('Reminder done'); await refreshTasks(); await renderResumeStrip(); } }, 'Done')));
+  });
   resumeEl.replaceChildren(
     h('span', { class: 'resume-label', text: '⏸ Where you left off' }),
     ...cards,
@@ -405,6 +415,20 @@ function renderTaskDetail(t, artifacts) {
   } });
   if (t.resume) resumeToggle.checked = true;
 
+  // Which code tool to relaunch from the resume strip ("jump back in").
+  const resumeAdapterSel = h('select', { onchange: async (e) => {
+    await window.verqury.updateTask(t.project, t.id, { resumeAdapter: e.target.value || null });
+    toast(e.target.value ? 'Resume tool set' : 'Resume tool cleared');
+    await refreshTasks();
+    await renderResumeStrip();
+  } });
+  resumeAdapterSel.append(h('option', { value: '', text: '— no launch tool —' }));
+  for (const a of state.adapters) {
+    const o = h('option', { value: a.slug, text: a.label });
+    if (a.slug === t.resumeAdapter) o.selected = true;
+    resumeAdapterSel.append(o);
+  }
+
   const body = h('pre', { class: 'artifact-body' });
   body.textContent = t.body ?? '';
 
@@ -444,7 +468,9 @@ function renderTaskDetail(t, artifacts) {
     h('div', { class: 'detail-sub', text: `${t.project} · created ${(t.created ?? '').replace('T', ' ').slice(0, 16)}${t.surface ? ` · surface ${t.surface}` : ''}` }),
     reportLine,
     h('div', { class: 'form-row' }, h('label', {}, 'Status', statusSel), h('label', {}, 'Route', routeSel)),
-    h('label', { class: 'resume-check' }, resumeToggle, h('span', { text: 'Remind me on open (surface this when Verqury opens)' })),
+    h('div', { class: 'resume-row' },
+      h('label', { class: 'resume-check' }, resumeToggle, h('span', { text: 'Remind me on open (surface this when Verqury opens)' })),
+      h('label', { class: 'resume-tool' }, h('span', { text: 'Resume in' }), resumeAdapterSel)),
     h('div', { class: 'detail-actions' }, handoff, del),
     h('div', { class: 'form-row' }, h('label', {}, 'Report', h('div', { class: 'tag-edit' }, reportSel, attach))),
     h('h2', { class: 'section-label', text: 'Payload' }),

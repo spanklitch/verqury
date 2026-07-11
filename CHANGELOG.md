@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first. Reuses the Tasks layer — a reminder is just a task with `resume: true` in
   frontmatter (ADR-0001); no new data type. CLI: `task add … --resume`,
   `task resume <project> <id> [on|off]`.
+- **Resume-in-tool launch button**: a resume reminder can remember which code tool
+  you were in (`resumeAdapter` on the task) and surface a **▶ Resume in <tool>**
+  button on its strip card — one click relaunches that adapter at the project repo
+  (renders the handoff packet to the clipboard and boots the command in the embedded
+  terminal). Pick the tool from the task detail's **Resume in** dropdown. Reuses the
+  Phase-7 adapter registry — Verqury launches the tool, it does not orchestrate it.
 
 ### Changed
 ### Fixed

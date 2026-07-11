@@ -397,6 +397,9 @@ body.dragging::after {
 .resume-actions { display: flex; gap: 6px; }
 .resume-check { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); margin: 6px 0 2px; }
 .resume-check input { width: auto; }
+.resume-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.resume-tool { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); }
+.resume-tool select { width: auto; }
 .inline-editor {
   width: 100%;
   min-height: 240px;

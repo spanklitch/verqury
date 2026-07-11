@@ -115,6 +115,16 @@ no persisted "snoozed until" state to keep truth in the file, not the UI; the re
 returns next open. This keeps the whole feature inside ADR-0001 and away from the scheduler/
 cron/external-integration path we explicitly did not want in the core loop.
 
+**Resume-in-tool launch reuses the adapter registry — no new orchestration.** A reminder can
+carry a second optional field, `resumeAdapter` (an adapter slug), so the strip card shows a
+**▶ Resume in <tool>** button. The button calls the *existing* `adapter:launch` path
+(`launchAdapter(slug, project)` in main.js): render the handoff packet → clipboard, `cd` to the
+repo, boot the command in the embedded terminal. Nothing new is spawned or driven — Verqury
+*launches* the tool and steps back; it does not orchestrate an agent (anti-goal, plan §1). The
+label is resolved in the renderer from the already-loaded `state.adapters`, falling back to the
+raw slug if that adapter was deleted. Scope is per-reminder (the field lives on the task .md),
+not per-project, so different reminders in the same repo can point at different tools.
+
 ## 4. Packaging & distribution
 
 electron-builder config lives in `app/package.json` `build`; `npm run dist -w app`

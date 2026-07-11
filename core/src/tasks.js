@@ -25,7 +25,7 @@ function taskFile(root, projectSlug, id) {
   return fs.existsSync(file) ? file : null;
 }
 
-export function addTask(root, projectSlug, { title, route = 'direct', stage = null, surface = null, body = '', resume = false } = {}) {
+export function addTask(root, projectSlug, { title, route = 'direct', stage = null, surface = null, body = '', resume = false, resumeAdapter = null } = {}) {
   if (!title || !String(title).trim()) throw new Error('Task title is required');
   assertEnum(route, TASK_ROUTES, 'task route');
   const p = ensureProject(root, projectSlug);
@@ -42,6 +42,7 @@ export function addTask(root, projectSlug, { title, route = 'direct', stage = nu
     surface,
     report: null,
     resume: Boolean(resume),
+    resumeAdapter: resumeAdapter || null, // which code tool to relaunch (adapter slug)
     project: projectSlug,
   };
   const file = path.join(p.tasks, `${id}.md`);
@@ -69,6 +70,7 @@ export function listTasks(root, { project, route, status } = {}) {
         surface: data.surface ?? null,
         report: data.report ?? null,
         resume: data.resume ?? false,
+        resumeAdapter: data.resumeAdapter ?? null,
         created: data.created ?? null,
       });
     }

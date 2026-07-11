@@ -394,3 +394,24 @@ taskClosed). (`hotkeyRegistered=false` only because Ctrl+Alt+C was already claim
 `:0.0` desktop the harness ran against; `markdownRendered=false` was a thin-seed artifact.)
 Gotcha: node-pty isn't installed in this env, so the resume block runs *before* the terminal
 block to stay independent of it. Multi-tab terminal remains the queued v0.3.0 sibling phase.
+
+### 2026-07-11 — Resume-in-tool launch button (extends resume reminders)
+Follow-on from Gary's UX note: the reminder tells you *what* you were doing but drops you at
+the door without the key. A reminder now carries an optional `resumeAdapter` (adapter slug);
+its strip card shows a **▶ Resume in <tool>** button that fires the *existing* `adapter:launch`
+(renders handoff packet → clipboard, boots the command in the embedded terminal at the repo).
+Set the tool from the task detail's **Resume in** dropdown (populated from the adapter registry;
+Claude Code is a seeded starter). **Reuses Phase-7 adapters — Verqury launches the tool, does
+not orchestrate it** (anti-goal clear). Per-reminder scope (field on the task .md, not the
+project), so reminders in one repo can point at different tools. Core: `addTask({resumeAdapter})`
++ `listTasks` surfaces it (→ `listResumeReminders` carries it; `updateTask` persists it). App:
+launch button on the strip card + adapter picker in task detail; label resolves from
+`state.adapters`, falls back to slug.
+
+**Verified:** 49 tests green (new core test round-trips `resumeAdapter` through
+add/list/update/clear) + lint clean. VERQURY_VERIFY harness (block 8b, isolated
+`VERQURY_DATA_ROOT` seeded with `init` + one project) in the running Electron app:
+**resumeLaunchButton=true** alongside resumeToggled/Surfaced/Cleared and the full P2–P7 +
+terminal regression (adapterCards=5, terminalAdapterRouted=true). `hotkeyRegistered=false` again
+just reflects the live desktop's existing Ctrl+Alt+C grab; markdown/packet-context falses are
+thin-seed artifacts, not regressions (this diff touches only task/resume code).

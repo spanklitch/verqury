@@ -454,6 +454,12 @@ async function runVerify(outDir) {
     win.webContents.send('app:shown'); // simulate re-opening Verqury
     await wait(300);
     result.resumeSurfacedOnOpen = await dom("(()=>{const c=document.querySelector('#resume');return !!c && !c.hidden && [...c.querySelectorAll('.resume-card')].some(x=>x.textContent.includes('Upload App Preview video'));})()");
+    // The reminder can remember which code tool to relaunch: set resumeAdapter and
+    // prove a "Resume in <label>" launch button appears on its card.
+    await dom(`window.verqury.updateTask(${JSON.stringify(slug)}, ${JSON.stringify(rt.id)}, { resumeAdapter: 'claude-code' })`);
+    win.webContents.send('app:shown');
+    await wait(300);
+    result.resumeLaunchButton = await dom("(()=>{const card=[...document.querySelectorAll('#resume .resume-card')].find(x=>x.textContent.includes('Upload App Preview video'));return !!card && [...card.querySelectorAll('button')].some(b=>b.textContent.includes('Resume in Claude Code'));})()");
     await dom("(()=>{const card=[...document.querySelectorAll('#resume .resume-card')].find(x=>x.textContent.includes('Upload App Preview video'));card&&[...card.querySelectorAll('button')].find(b=>b.textContent==='Done').click();})()");
     await wait(300);
     result.resumeCleared = api.getTask(root, slug, rt.id).status === 'done'
