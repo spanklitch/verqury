@@ -108,6 +108,9 @@ function createWindow(show = true) {
     },
   });
   win.loadFile(path.join(dir, 'renderer', 'index.html'));
+  // "Where we left off": nudge the renderer to refresh resume reminders each time
+  // the window is brought to the foreground (tray-show or first open).
+  win.on('show', () => { if (win && !win.isDestroyed()) win.webContents.send('app:shown'); });
   return win;
 }
 
@@ -196,6 +199,7 @@ function setupIpc() {
     return { payload };
   });
   ipcMain.handle('task:attachReport', (_e, projectSlug, id, artifactId) => api.attachReport(root, projectSlug, id, artifactId));
+  ipcMain.handle('resume:list', () => api.getResumeReminders(root));
 
   ipcMain.handle('adapters:list', () => api.getAdapters(root));
   ipcMain.handle('adapter:add', (_e, adapter) => api.createAdapter(root, adapter));
@@ -440,6 +444,20 @@ async function runVerify(outDir) {
     result.taskCards = await dom("document.querySelectorAll('#list .task-card').length");
     await dom("document.querySelector('#list .task-card')?.click()");
     await wait(150);
+
+    // (8b) resume reminders (done-when): flag a task to surface on open, prove it
+    // greets you in the resume strip when Verqury opens, then clears when done.
+    const rt = api.createTask(root, slug, { title: 'Upload App Preview video' });
+    await dom(`window.verqury.updateTask(${JSON.stringify(slug)}, ${JSON.stringify(rt.id)}, { resume: true })`);
+    await wait(150);
+    result.resumeToggled = api.getTask(root, slug, rt.id).resume === true;
+    win.webContents.send('app:shown'); // simulate re-opening Verqury
+    await wait(300);
+    result.resumeSurfacedOnOpen = await dom("(()=>{const c=document.querySelector('#resume');return !!c && !c.hidden && [...c.querySelectorAll('.resume-card')].some(x=>x.textContent.includes('Upload App Preview video'));})()");
+    await dom("(()=>{const card=[...document.querySelectorAll('#resume .resume-card')].find(x=>x.textContent.includes('Upload App Preview video'));card&&[...card.querySelectorAll('button')].find(b=>b.textContent==='Done').click();})()");
+    await wait(300);
+    result.resumeCleared = api.getTask(root, slug, rt.id).status === 'done'
+      && await dom("![...document.querySelectorAll('#resume .resume-card')].some(x=>x.textContent.includes('Upload App Preview video'))");
 
     // (9) adapter registry (done-when): add a fictional adapter THROUGH THE SETTINGS
     // FORM (zero code), then launch — its command runs and its packet is handed off.

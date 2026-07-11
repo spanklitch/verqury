@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Resume reminders** ("where you left off"): flag any task with **Remind me on
+  open** and it surfaces in a strip across the top of the window each time you open
+  Verqury — the pending thing greets you instead of a blank slate. Dismiss (Snooze,
+  hides until next open), or mark Done to clear it. Active project's reminders sort
+  first. Reuses the Tasks layer — a reminder is just a task with `resume: true` in
+  frontmatter (ADR-0001); no new data type. CLI: `task add … --resume`,
+  `task resume <project> <id> [on|off]`.
+
 ### Changed
 ### Fixed
 

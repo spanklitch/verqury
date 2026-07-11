@@ -38,6 +38,7 @@ const OPTIONS = {
   surface: { type: 'string' },
   json: { type: 'boolean' },
   all: { type: 'boolean' },
+  resume: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
 };
 
@@ -62,8 +63,9 @@ Usage: verqury <command> [args] [--data-root <dir>]
   adapter list                         Configured AI surfaces (launch/handoff)
   packet list
   packet render <packet> <project>     Render a bootstrap packet [--out file] [--log N]
-  task add <project> <title...>        [--route r] [--surface s] (or --body -)
+  task add <project> <title...>        [--route r] [--surface s] [--resume] (or --body -)
   task list [--project s] [--route r] [--status s]
+  task resume <project> <id> [on|off]  Flag a task to surface when Verqury opens
   task status <project> <id> <status>
   task handoff <project> <id>          Print the hand-off payload
   task report <project> <id> <artifactId>   Attach a report → done → log entry
@@ -328,9 +330,19 @@ function main() {
           route: values.route ?? 'direct',
           surface: values.surface ?? null,
           body: bodyFrom(values),
+          resume: Boolean(values.resume),
         });
         afterMutation();
         console.log(`Task ${t.id} (${t.route}) → ${project}`);
+        return;
+      }
+      if (sub === 'resume') {
+        const [, , project, id, onoff] = positionals;
+        if (!project || !id) fail('task resume needs <project> <id>');
+        const on = onoff !== 'off';
+        tasks.updateTask(root, project, id, { resume: on });
+        afterMutation();
+        console.log(`${id} resume ${on ? 'on' : 'off'}`);
         return;
       }
       if (sub === 'list') {

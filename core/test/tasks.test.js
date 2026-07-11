@@ -4,7 +4,8 @@ import { tmpRoot } from './helpers.js';
 import { createProject } from '../src/projects.js';
 import { addArtifact } from '../src/artifacts.js';
 import { projectTimeline } from '../src/memory.js';
-import { addTask, listTasks, showTask, updateTask, deleteTask, renderHandoff, attachReport } from '../src/tasks.js';
+import { setActiveProject } from '../src/config.js';
+import { addTask, listTasks, listResumeReminders, showTask, updateTask, deleteTask, renderHandoff, attachReport } from '../src/tasks.js';
 
 test('addTask validates route and defaults to todo', () => {
   const root = tmpRoot();
@@ -30,6 +31,28 @@ test('list, update, and delete tasks', () => {
   assert.throws(() => updateTask(root, 'proj', t.id, { status: 'nope' }), /Invalid task status/);
   deleteTask(root, 'proj', t.id);
   assert.equal(listTasks(root, { project: 'proj' }).length, 0);
+});
+
+test('listResumeReminders surfaces open resume tasks, active project first, closed ones excluded', () => {
+  const root = tmpRoot();
+  createProject(root, { name: 'Alpha' });
+  createProject(root, { name: 'Beta' });
+
+  addTask(root, 'alpha', { title: 'Plain task' }); // not a reminder
+  const a = addTask(root, 'alpha', { title: 'Resume Alpha', resume: true });
+  addTask(root, 'beta', { title: 'Resume Beta', resume: true });
+  const closed = addTask(root, 'beta', { title: 'Already done', resume: true });
+  assert.equal(a.resume, true);
+
+  updateTask(root, 'beta', closed.id, { status: 'done' });
+  setActiveProject(root, 'beta'); // active project's reminder should sort first
+
+  const reminders = listResumeReminders(root);
+  assert.deepEqual(reminders.map((t) => t.title), ['Resume Beta', 'Resume Alpha']);
+
+  // Toggling the flag off removes it from the list.
+  updateTask(root, 'alpha', a.id, { resume: false });
+  assert.deepEqual(listResumeReminders(root).map((t) => t.title), ['Resume Beta']);
 });
 
 test('renderHandoff includes surface packet context and the task payload', () => {

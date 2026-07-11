@@ -36,6 +36,7 @@ import {
   renderPacket as coreRenderPacket,
   addTask,
   listTasks,
+  listResumeReminders,
   showTask,
   updateTask as coreUpdateTask,
   deleteTask as coreDeleteTask,
@@ -194,6 +195,10 @@ export function getTasks(root, filters) {
 
 export function getTask(root, projectSlug, id) {
   return showTask(root, projectSlug, id);
+}
+
+export function getResumeReminders(root) {
+  return listResumeReminders(root);
 }
 
 export function createTask(root, projectSlug, payload) {

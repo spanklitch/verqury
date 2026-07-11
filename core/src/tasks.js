@@ -9,6 +9,7 @@ import { projectPaths } from './paths.js';
 import { readDoc, writeDoc } from './frontmatter.js';
 import { ulid } from './ids.js';
 import { listProjects } from './projects.js';
+import { getActiveProject } from './config.js';
 import { addLog } from './memory.js';
 import { listPackets, renderPacket } from './packets.js';
 import { TASK_ROUTES, TASK_STATUSES, assertEnum } from './schema.js';
@@ -24,7 +25,7 @@ function taskFile(root, projectSlug, id) {
   return fs.existsSync(file) ? file : null;
 }
 
-export function addTask(root, projectSlug, { title, route = 'direct', stage = null, surface = null, body = '' } = {}) {
+export function addTask(root, projectSlug, { title, route = 'direct', stage = null, surface = null, body = '', resume = false } = {}) {
   if (!title || !String(title).trim()) throw new Error('Task title is required');
   assertEnum(route, TASK_ROUTES, 'task route');
   const p = ensureProject(root, projectSlug);
@@ -40,6 +41,7 @@ export function addTask(root, projectSlug, { title, route = 'direct', stage = nu
     status: 'todo',
     surface,
     report: null,
+    resume: Boolean(resume),
     project: projectSlug,
   };
   const file = path.join(p.tasks, `${id}.md`);
@@ -66,11 +68,26 @@ export function listTasks(root, { project, route, status } = {}) {
         status: data.status ?? null,
         surface: data.surface ?? null,
         report: data.report ?? null,
+        resume: data.resume ?? false,
         created: data.created ?? null,
       });
     }
   }
   return out.sort((a, b) => String(a.created).localeCompare(String(b.created)));
+}
+
+// "Where we left off" reminders: open tasks flagged resume:true, surfaced when
+// Verqury opens. Active project first so the thing you're on greets you at the top.
+const RESUME_CLOSED = new Set(['done', 'dropped']);
+export function listResumeReminders(root) {
+  const active = getActiveProject(root);
+  return listTasks(root)
+    .filter((t) => t.resume && !RESUME_CLOSED.has(t.status))
+    .sort((a, b) => {
+      const ap = a.project === active ? 0 : 1;
+      const bp = b.project === active ? 0 : 1;
+      return ap - bp || String(a.created).localeCompare(String(b.created));
+    });
 }
 
 export function showTask(root, projectSlug, id) {

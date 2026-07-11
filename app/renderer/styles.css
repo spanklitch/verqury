@@ -364,6 +364,39 @@ body.dragging::after {
 .edit-btn { position: absolute; top: 10px; right: 10px; z-index: 2; opacity: 0.55; }
 .edit-btn:hover { opacity: 1; }
 .btn.small { padding: 3px 9px; font-size: 12px; }
+
+/* Resume reminders — the "where we left off" strip across the top of the main pane. */
+.resume-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 34px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--line);
+}
+.resume-label { font-weight: 600; color: var(--accent); white-space: nowrap; }
+.resume-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.resume-text { display: flex; align-items: baseline; gap: 8px; }
+.resume-proj {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+.resume-actions { display: flex; gap: 6px; }
+.resume-check { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); margin: 6px 0 2px; }
+.resume-check input { width: auto; }
 .inline-editor {
   width: 100%;
   min-height: 240px;

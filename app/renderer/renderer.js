@@ -8,6 +8,7 @@ import { mountTerminal } from './terminal.js';
 const el = (sel) => document.querySelector(sel);
 const listEl = el('#list');
 const detailEl = el('#detail');
+const resumeEl = el('#resume');
 const searchEl = el('#search');
 const toastEl = el('#toast');
 
@@ -31,6 +32,7 @@ const state = {
   activeTask: null, // { project, id }
   captureTarget: null, // project new captures file into (plan §4.3)
   inboxKind: '', // inbox kind filter
+  resumeSnoozed: new Set(), // task ids dismissed this session (reappear next open)
 };
 
 function h(tag, attrs = {}, ...kids) {
@@ -328,6 +330,34 @@ async function refreshInbox() {
   if (state.mode === 'inbox') renderInboxList();
 }
 
+/* ---------- resume reminders ("where we left off") ---------- */
+
+// The strip across the top of the window: open tasks flagged resume:true, shown
+// when Verqury opens. Dismiss (snooze) hides for this session; Done closes it.
+async function renderResumeStrip() {
+  const reminders = (await window.verqury.resumeReminders())
+    .filter((t) => !state.resumeSnoozed.has(t.id));
+  if (!reminders.length) {
+    resumeEl.hidden = true;
+    resumeEl.replaceChildren();
+    return;
+  }
+  const cards = reminders.map((t) =>
+    h('div', { class: 'resume-card' },
+      h('span', { class: 'resume-text' },
+        h('span', { class: 'resume-proj', text: t.project }),
+        h('span', { text: t.title })),
+      h('span', { class: 'resume-actions' },
+        h('button', { class: 'btn small', title: 'Open this task', onclick: () => { setMode('tasks'); selectTask(t.project, t.id); } }, 'Open'),
+        h('button', { class: 'btn small', title: 'Hide until next time you open Verqury', onclick: async () => { state.resumeSnoozed.add(t.id); await renderResumeStrip(); } }, 'Snooze'),
+        h('button', { class: 'btn small', title: 'Mark done — clears the reminder', onclick: async () => { await window.verqury.updateTask(t.project, t.id, { status: 'done' }); toast('Reminder done'); await refreshTasks(); await renderResumeStrip(); } }, 'Done'))));
+  resumeEl.replaceChildren(
+    h('span', { class: 'resume-label', text: '⏸ Where you left off' }),
+    ...cards,
+  );
+  resumeEl.hidden = false;
+}
+
 /* ---------- tasks ---------- */
 
 function renderTaskList() {
@@ -366,6 +396,14 @@ function renderTaskDetail(t, artifacts) {
     if (r === t.route) o.selected = true;
     routeSel.append(o);
   }
+
+  const resumeToggle = h('input', { type: 'checkbox', onchange: async (e) => {
+    await window.verqury.updateTask(t.project, t.id, { resume: e.target.checked });
+    toast(e.target.checked ? 'Will greet you when Verqury opens' : 'Reminder off');
+    await refreshTasks();
+    await renderResumeStrip();
+  } });
+  if (t.resume) resumeToggle.checked = true;
 
   const body = h('pre', { class: 'artifact-body' });
   body.textContent = t.body ?? '';
@@ -406,6 +444,7 @@ function renderTaskDetail(t, artifacts) {
     h('div', { class: 'detail-sub', text: `${t.project} · created ${(t.created ?? '').replace('T', ' ').slice(0, 16)}${t.surface ? ` · surface ${t.surface}` : ''}` }),
     reportLine,
     h('div', { class: 'form-row' }, h('label', {}, 'Status', statusSel), h('label', {}, 'Route', routeSel)),
+    h('label', { class: 'resume-check' }, resumeToggle, h('span', { text: 'Remind me on open (surface this when Verqury opens)' })),
     h('div', { class: 'detail-actions' }, handoff, del),
     h('div', { class: 'form-row' }, h('label', {}, 'Report', h('div', { class: 'tag-edit' }, reportSel, attach))),
     h('h2', { class: 'section-label', text: 'Payload' }),
@@ -909,6 +948,8 @@ async function init() {
     refreshInbox().then(() => info && selectArtifact(info.project, info.id));
   });
   window.verqury.onNavTerminal(() => setMode('terminal'));
+  await renderResumeStrip(); // greet with pending reminders on first open
+  window.verqury.onAppShown(() => renderResumeStrip()); // and each foregrounding
   window.__verquryReady = true; // signal for headless verification
 }
 

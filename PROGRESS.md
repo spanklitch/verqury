@@ -374,3 +374,23 @@ plan is complete end to end (Phases 0–8). Post-0.1 ideas live in the plan's "D
 Optional follow-ups: a GitHub Release with the AppImage/deb attached (`gh release create
 v0.1.0 app/dist/Verqury-0.1.0.AppImage app/dist/verqury-app_0.1.0_amd64.deb`); a
 flawedworks.com/verqury page; back-import Mebit/ZAGNALS as seed data (plan §7 decision).
+
+### 2026-07-10 — Resume reminders (post-0.2.0, v0.3.0 candidate)
+"Where you left off" nudges, driven by Gary's need to be reminded on return that a live
+app (ZAGNALS) is awaiting Apple approval before the next step. Deliberately Verqury-native
+and file-backed (not an external cron/ASC check). **Reuses the Tasks layer** rather than a
+new concept: one optional frontmatter flag `resume: true`; an open flagged task surfaces in
+a dismissible strip across the top of the window, refreshed whenever Verqury is opened
+(`win.on('show')` → renderer). Core: `listResumeReminders(root)` (open resume tasks, active
+project first), `addTask({resume})`, `task resume` CLI. App: `resume:list` IPC + `app:shown`
+event; resume strip with Open / Snooze (session-only) / Done; **Remind me on open** toggle in
+task detail. Crosses no anti-goal; stays ADR-0001 (reminder is a task .md file).
+
+**Verified:** 48 tests green (core `listResumeReminders` unit test: filtering + active-first
+sort + toggle-off) + lint clean. VERQURY_VERIFY harness (block 8b) against a seeded root in
+the running Electron app: **resumeToggled=true, resumeSurfacedOnOpen=true, resumeCleared=true**,
+plus P2–P7 core-loop regression green (projectCreated/liveUpdate/stageChange/guidance*/capture*/
+taskClosed). (`hotkeyRegistered=false` only because Ctrl+Alt+C was already claimed on the live
+`:0.0` desktop the harness ran against; `markdownRendered=false` was a thin-seed artifact.)
+Gotcha: node-pty isn't installed in this env, so the resume block runs *before* the terminal
+block to stay independent of it. Multi-tab terminal remains the queued v0.3.0 sibling phase.

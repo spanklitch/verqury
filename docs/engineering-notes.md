@@ -105,6 +105,16 @@ rendered links are routed through `shell.openExternal` (http/https only) via the
 bridge rather than navigating the window. Clipboard writes also go through the bridge
 (Electron `clipboard`), not renderer `navigator.clipboard` — reliable under sandbox.
 
+**Resume reminders reuse Tasks — no parallel concept.** A "where you left off" reminder is
+just a task with `resume: true` in frontmatter, not a new data type. `listResumeReminders`
+returns open (`status ∉ {done,dropped}`) resume tasks, active project first. The trigger is
+*opening the window*, not a clock: `win.on('show')` sends an `app:shown` IPC and the renderer
+re-fetches the strip (it also fetches once on boot, since the first `show` can precede the
+renderer subscribing). Snooze is deliberately session-only (an in-memory `Set` of task ids) —
+no persisted "snoozed until" state to keep truth in the file, not the UI; the reminder simply
+returns next open. This keeps the whole feature inside ADR-0001 and away from the scheduler/
+cron/external-integration path we explicitly did not want in the core loop.
+
 ## 4. Packaging & distribution
 
 electron-builder config lives in `app/package.json` `build`; `npm run dist -w app`

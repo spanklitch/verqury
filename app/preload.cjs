@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('verqury', {
   deleteTask: (projectSlug, id) => ipcRenderer.invoke('task:delete', projectSlug, id),
   handoffTask: (projectSlug, id) => ipcRenderer.invoke('task:handoff', projectSlug, id),
   attachReport: (projectSlug, id, artifactId) => ipcRenderer.invoke('task:attachReport', projectSlug, id, artifactId),
+  resumeReminders: () => ipcRenderer.invoke('resume:list'),
+  onAppShown: (cb) => ipcRenderer.on('app:shown', () => cb()),
 
   listAdapters: () => ipcRenderer.invoke('adapters:list'),
   addAdapter: (adapter) => ipcRenderer.invoke('adapter:add', adapter),
