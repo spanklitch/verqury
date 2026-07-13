@@ -125,6 +125,35 @@ label is resolved in the renderer from the already-loaded `state.adapters`, fall
 raw slug if that adapter was deleted. Scope is per-reminder (the field lives on the task .md),
 not per-project, so different reminders in the same repo can point at different tools.
 
+**Multi-tab terminal: the launch is renderer-driven to dodge an output race.** When the
+terminal went multi-session (ADR-0010), the tempting shape was to have main `ptyStart` the
+tab and write the command, then tell the renderer to show it. That races: main can emit the
+command's first output before the renderer has created the xterm and attached its `pty:data`
+listener, so the first line is lost. Fix: `launchAdapter` returns a `{id,label,cwd}` pin and
+does *not* touch a PTY; the renderer creates the session (attaching the listener) and *then*
+writes the command. Concretely the renderer `await`s the `ptyStart` invoke promise
+(`session.ready`) before `ptyInput`, because `ptyStart` is an async `invoke` while `ptyInput`
+is a fire-and-forget `send` — write too early and main's `ptys.get(id)` is still empty and
+drops it. Tab identity is the pin (`proj:<slug>`), which is what makes "one tab per project"
+fall out for free: relaunch resolves to the same id, so it focuses instead of duplicating.
+
+**Bell attention rides the terminal BEL, not output-scraping.** "Tell me when the agent is
+done" is detected the standard way: the CLI writes BEL (`\x07`), xterm surfaces it via
+`term.onBell`, and we beep (a synthesized Web Audio blip — no asset in the repo), glow the
+originating tab if it isn't active, and ask main to raise a desktop notification *only when
+the window is unfocused* (`win.isFocused()` gate). We deliberately do **not** try to infer
+"awaiting input" by pattern-matching prompts — that's fragile and per-tool. The reliability
+therefore depends on the CLI actually ringing the bell: **Claude Code** fires an `idle_prompt`
+notification when done and a `permission_prompt` when it needs approval, but by default only
+desktop-notifies in Ghostty/Kitty/iTerm2. Note that `preferredNotifChannel: terminal_bell`
+alone is **not** enough in our embedded xterm: that channel's bell is gated (it appears
+focus-dependent) and our tab doesn't report terminal focus, so it stayed silent even with the
+setting on — verified against a live session. The reliable fix is a `Notification` hook that
+emits BEL unconditionally, written straight to the controlling tty so it isn't swallowed by
+hook-stdout capture: `printf '\a' > /dev/tty 2>/dev/null` in `~/.claude/settings.json`. Plain
+shells also bell on other events (e.g. completion ambiguity), so the signal is "something
+wants attention," not strictly "task done."
+
 ## 4. Packaging & distribution
 
 electron-builder config lives in `app/package.json` `build`; `npm run dist -w app`

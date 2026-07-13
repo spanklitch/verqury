@@ -11,35 +11,40 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
-// Embedded terminal: node-pty spawns a real PTY in the main process and streams
-// it to the xterm.js widget in the renderer (ADR-0009). node-pty is a native
-// module built for Electron's ABI (electron-rebuild), loaded only here.
-let ptyProc = null;
-function ptyStart(shell) {
-  if (ptyProc) return { alreadyRunning: true };
+// Embedded terminal: node-pty spawns real PTYs in the main process and streams
+// them to xterm.js widgets in the renderer (ADR-0009, multi-session ADR-0010).
+// node-pty is a native module built for Electron's ABI (electron-rebuild), loaded
+// only here. Each terminal tab is one keyed PTY; pty:data / pty:exit carry the id.
+const ptys = new Map(); // id -> node-pty process
+function ptyStart(id, { shell, cwd } = {}) {
+  if (ptys.has(id)) return { alreadyRunning: true, id };
   const nodePty = require('node-pty');
   const sh = shell || process.env.SHELL || 'bash';
-  ptyProc = nodePty.spawn(sh, [], {
+  const proc = nodePty.spawn(sh, [], {
     name: 'xterm-color',
     cols: 80,
     rows: 24,
-    cwd: process.env.HOME,
+    cwd: cwd && fs.existsSync(cwd) ? cwd : process.env.HOME,
     env: process.env,
   });
-  ptyProc.onData((d) => {
-    if (win && !win.isDestroyed()) win.webContents.send('pty:data', d);
+  proc.onData((d) => {
+    if (win && !win.isDestroyed()) win.webContents.send('pty:data', { id, data: d });
   });
-  ptyProc.onExit(() => {
-    ptyProc = null;
-    if (win && !win.isDestroyed()) win.webContents.send('pty:exit');
+  proc.onExit(() => {
+    ptys.delete(id);
+    if (win && !win.isDestroyed()) win.webContents.send('pty:exit', { id });
   });
-  return { started: true, shell: sh };
+  ptys.set(id, proc);
+  return { started: true, id, shell: sh };
+}
+function ptyKill(id) {
+  const p = ptys.get(id);
+  if (p) { try { p.kill(); } catch { /* already gone */ } ptys.delete(id); }
+  return { id };
 }
 import { addLog } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
-
-const shQuote = (s) => `'${String(s).replaceAll("'", "'\\''")}'`;
 
 // Track text WE put on the clipboard, so clipboard-watch doesn't re-capture it.
 let selfWrite = '';
@@ -66,11 +71,15 @@ function launchAdapter(adapterSlug, projectSlug) {
     }
   }
   if (adapter.target === 'terminal') {
-    ptyStart();
-    const cd = project.repo ? `cd ${shQuote(project.repo)} && ` : '';
-    if (ptyProc) ptyProc.write(`${cd}${command}\n`);
-    if (win && !win.isDestroyed()) win.webContents.send('nav:terminal');
-    return { launched: true, target: 'terminal', command, copiedPacket };
+    // Renderer opens (or focuses) a project-pinned tab and runs the command there,
+    // so it attaches its xterm listener before any output — no missed first line.
+    return {
+      launched: true,
+      target: 'terminal',
+      command,
+      copiedPacket,
+      pin: { id: `proj:${projectSlug}`, label: `${projectSlug} · ${adapter.label}`, cwd: project.repo || null },
+    };
   }
   if (command.trim()) {
     spawn(command, { shell: true, detached: true, stdio: 'ignore' }).unref();
@@ -207,15 +216,13 @@ function setupIpc() {
   ipcMain.handle('adapter:remove', (_e, slug) => api.removeAdapter(root, slug));
   ipcMain.handle('adapter:launch', (_e, adapterSlug, projectSlug) => launchAdapter(adapterSlug, projectSlug));
 
-  ipcMain.handle('pty:start', (_e, shell) => ptyStart(shell));
-  ipcMain.on('pty:input', (_e, data) => { if (ptyProc) ptyProc.write(data); });
-  ipcMain.on('pty:resize', (_e, cols, rows) => { if (ptyProc) { try { ptyProc.resize(cols, rows); } catch { /* size race */ } } });
-  // Send a block of text to the terminal as a bracketed paste (so CLIs treat it
-  // as pasted input, not line-by-line), and switch to the Terminal tab.
-  ipcMain.handle('pty:send', (_e, text) => {
-    ptyStart();
-    if (ptyProc) ptyProc.write(`\x1b[200~${String(text ?? '')}\x1b[201~`);
-    if (win && !win.isDestroyed()) win.webContents.send('nav:terminal');
+  ipcMain.handle('pty:start', (_e, id, opts) => ptyStart(id, opts));
+  ipcMain.on('pty:input', (_e, id, data) => { const p = ptys.get(id); if (p) p.write(data); });
+  ipcMain.on('pty:resize', (_e, id, cols, rows) => { const p = ptys.get(id); if (p) { try { p.resize(cols, rows); } catch { /* size race */ } } });
+  ipcMain.handle('pty:kill', (_e, id) => ptyKill(id));
+  // A terminal rang the bell while Verqury was in the background — nudge the OS.
+  ipcMain.handle('terminal:notify', (_e, label) => {
+    if (win && !win.isDestroyed() && !win.isFocused()) notify(`${label} is waiting for you`);
   });
   ipcMain.handle('clipboard:watch', (_e, on) => { setClipboardWatch(Boolean(on)); return clipboardWatch; });
   ipcMain.handle('clipboard:watching', () => clipboardWatch);
@@ -489,24 +496,49 @@ async function runVerify(outDir) {
     result.adapterLaunched = fs.existsSync(sentinel);
     result.adapterHandoffCopied = /build context/.test(clipboard.readText());
 
-    // (10) embedded terminal: open the tab, run a command through the PTY, capture it.
+    // (10) embedded terminal — multi-session tabs (ADR-0010). Opening the view gives
+    // a default shell tab; prove independent per-tab sessions, project-pinned reuse,
+    // isolation between tabs, persistence across navigation, and close.
     await dom("document.querySelector('.tab[data-mode=terminal]').click()");
     await wait(700);
     result.terminalMounted = await dom("!!document.querySelector('.term-host .xterm')");
-    await dom("window.verqury.ptyInput('echo hello from the Verqury terminal\\n')");
-    await wait(600);
-    // The shell rendered a prompt into the terminal (DOM renderer content check).
-    result.terminalHasPrompt = await dom("(document.querySelector('.term-host .xterm-rows')?.innerText||'').includes('$')");
-    // A terminal-target adapter routes its command into the embedded terminal.
-    api.createAdapter(root, { slug: 'harness-term', label: 'HarnessTerm', command: 'echo TERMINAL_ADAPTER_OK', target: 'terminal', packet: null, notes: '' });
+    result.terminalDefaultTab = await dom("document.querySelectorAll('.term-tab').length"); // 1 default shell
+    // A terminal-target adapter now returns a project pin from main (renderer opens the tab).
+    api.createAdapter(root, { slug: 'harness-term', label: 'HarnessTerm', command: 'echo OK', target: 'terminal', packet: null, notes: '' });
     const launchRes = await dom(`window.verqury.launchAdapter('harness-term', ${JSON.stringify(slug)})`);
-    result.terminalAdapterRouted = Boolean(launchRes && launchRes.target === 'terminal');
-    // Navigate away and back — the session must persist and still show a prompt.
+    result.terminalAdapterPin = Boolean(launchRes && launchRes.target === 'terminal' && launchRes.pin && launchRes.pin.id === `proj:${slug}`);
+    // Open a project-pinned tab and run a unique command in it (via the UI path).
+    await dom(`window.__verquryTerm.openProjectTerminal({ id: 'proj:${slug}', label: '${slug} · echo', cwd: null }, 'echo PROJ_TAB_MARKER')`);
+    await wait(900);
+    result.terminalTwoTabs = await dom("document.querySelectorAll('.term-tab').length"); // shell + project
+    result.terminalProjectPinned = await dom(`[...document.querySelectorAll('.term-tab-label')].some(t=>t.textContent.includes('${slug} · echo'))`);
+    result.terminalActiveRanCommand = await dom("(document.querySelector('.term-host .xterm-rows')?.innerText||'').includes('PROJ_TAB_MARKER')");
+    // Reuse: opening the same project id again focuses the tab — no duplicate.
+    await dom(`window.__verquryTerm.openProjectTerminal({ id: 'proj:${slug}', label: '${slug} · echo', cwd: null }, '')`);
+    await wait(200);
+    result.terminalReuseNoDup = (await dom("document.querySelectorAll('.term-tab').length")) === 2;
+    // Switch to the first (shell) tab — it has a prompt and NOT the project tab's output.
+    await dom("[...document.querySelectorAll('.term-tab .term-tab-label')][0].click()");
+    await wait(500);
+    result.terminalHasPrompt = await dom("(document.querySelector('.term-host .xterm-rows')?.innerText||'').includes('$')");
+    result.terminalTabsIsolated = await dom("!(document.querySelector('.term-host .xterm-rows')?.innerText||'').includes('PROJ_TAB_MARKER')");
+    // Bell: a background tab that rings BEL gets an attention indicator; opening it clears it.
+    await dom(`window.__verquryTerm.ringBellForTest('proj:${slug}')`);
+    await wait(200);
+    result.terminalBellAttention = await dom(`(()=>{const t=[...document.querySelectorAll('.term-tab')].find(x=>x.textContent.includes('${slug} · echo'));return !!t && t.classList.contains('attention');})()`);
+    await dom(`[...document.querySelectorAll('.term-tab .term-tab-label')].find(l=>l.textContent.includes('${slug} · echo')).click()`);
+    await wait(200);
+    result.terminalBellCleared = await dom(`(()=>{const t=[...document.querySelectorAll('.term-tab')].find(x=>x.textContent.includes('${slug} · echo'));return !!t && !t.classList.contains('attention');})()`);
+    // Navigate away and back — both sessions persist.
     await dom("document.querySelector('.tab[data-mode=projects]').click()");
     await wait(300);
     await dom("document.querySelector('.tab[data-mode=terminal]').click()");
     await wait(500);
-    result.terminalPersistsOnReturn = await dom("(document.querySelector('.term-host .xterm-rows')?.innerText||'').includes('$')");
+    result.terminalPersistsOnReturn = (await dom("document.querySelectorAll('.term-tab').length")) === 2;
+    // Close the project tab via its × — only it disappears.
+    await dom(`(()=>{const tab=[...document.querySelectorAll('.term-tab')].find(t=>t.textContent.includes('${slug} · echo'));tab&&tab.querySelector('.term-tab-close').click();})()`);
+    await wait(300);
+    result.terminalTabClosed = await dom(`document.querySelectorAll('.term-tab').length===1 && ![...document.querySelectorAll('.term-tab-label')].some(t=>t.textContent.includes('${slug} · echo'))`);
     // Tab overflow check: all tabs fit within the sidebar (none spill past its right edge).
     result.tabsFitSidebar = await dom("(()=>{const sb=document.querySelector('.sidebar').getBoundingClientRect();return [...document.querySelectorAll('.tab')].every(t=>t.getBoundingClientRect().right<=sb.right+1);})()");
     await dom("document.querySelector('.tab[data-mode=projects]').click()"); // end on a normal view for the shot
@@ -547,5 +579,6 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('before-quit', () => {
   watcher?.close();
-  try { ptyProc?.kill(); } catch { /* already gone */ }
+  for (const p of ptys.values()) { try { p.kill(); } catch { /* already gone */ } }
+  ptys.clear();
 });

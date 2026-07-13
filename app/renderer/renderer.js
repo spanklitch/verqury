@@ -3,7 +3,7 @@
 // this stage allows: change a project's stage, create guidance, promote guidance.
 // No free-form body editing — that would drift toward an IDE (anti-goal).
 import { renderMarkdown } from '../src/markdown.js';
-import { mountTerminal } from './terminal.js';
+import { mountTerminal, openProjectTerminal, sendToActiveTerminal, newShellTab, ringBellForTest } from './terminal.js';
 
 const el = (sel) => document.querySelector(sel);
 const listEl = el('#list');
@@ -330,6 +330,17 @@ async function refreshInbox() {
   if (state.mode === 'inbox') renderInboxList();
 }
 
+// Launch an adapter; if it targets the embedded terminal, open (or focus) that
+// project's terminal tab and run the command there, then switch to the terminal view.
+async function launchAdapterUI(slug, projectSlug) {
+  const r = await window.verqury.launchAdapter(slug, projectSlug);
+  if (r.target === 'terminal') {
+    await openProjectTerminal(r.pin, r.command);
+    setMode('terminal');
+  }
+  return r;
+}
+
 /* ---------- resume reminders ("where we left off") ---------- */
 
 // The strip across the top of the window: open tasks flagged resume:true, shown
@@ -348,7 +359,7 @@ async function renderResumeStrip() {
       ? h('button', {
           class: 'btn small primary',
           title: `Relaunch ${adapter ? adapter.label : t.resumeAdapter} at ${t.project} and jump back in`,
-          onclick: async () => { await window.verqury.launchAdapter(t.resumeAdapter, t.project); toast(`Launching ${adapter ? adapter.label : t.resumeAdapter}…`); },
+          onclick: async () => { await launchAdapterUI(t.resumeAdapter, t.project); toast(`Launching ${adapter ? adapter.label : t.resumeAdapter}…`); },
         }, `▶ Resume in ${adapter ? adapter.label : t.resumeAdapter}`)
       : null;
     return h('div', { class: 'resume-card' },
@@ -584,7 +595,7 @@ function renderProjectDetail(project, timeline) {
     for (const a of state.adapters) {
       launchRow.append(h('button', { class: 'btn', title: a.notes ?? '', onclick: async () => {
         try {
-          const r = await window.verqury.launchAdapter(a.slug, project.slug);
+          const r = await launchAdapterUI(a.slug, project.slug);
           toast(r.copiedPacket ? `Launched ${a.label} — context copied` : `Launched ${a.label}`);
         } catch (err) { toast(err.message); }
       } }, a.label));
@@ -737,7 +748,7 @@ async function showBootstrap(projectSlug) {
     preview.textContent = r.text;
     const buttons = [
       h('button', { class: 'btn primary', onclick: () => { window.verqury.copyToClipboard(r.text); toast('Copied to clipboard'); } }, 'Copy to clipboard'),
-      h('button', { class: 'btn', onclick: () => { window.verqury.ptySend(r.text); toast('Sent to terminal'); } }, '→ Terminal'),
+      h('button', { class: 'btn', onclick: async () => { await sendToActiveTerminal(r.text); setMode('terminal'); toast('Sent to terminal'); } }, '→ Terminal'),
     ];
     if (r.output) {
       buttons.push(h('button', { class: 'btn', onclick: async () => {
@@ -760,7 +771,7 @@ async function showBootstrap(projectSlug) {
 function renderGuidanceDetail(g) {
   const actions = h('div', { class: 'detail-actions' },
     h('button', { class: 'btn', onclick: () => { window.verqury.copyToClipboard(g.body ?? ''); toast('Copied to clipboard'); } }, 'Copy'),
-    h('button', { class: 'btn', onclick: () => { window.verqury.ptySend(g.body ?? ''); toast('Sent to terminal'); } }, '→ Terminal'));
+    h('button', { class: 'btn', onclick: async () => { await sendToActiveTerminal(g.body ?? ''); setMode('terminal'); toast('Sent to terminal'); } }, '→ Terminal'));
   if (g.scope !== 'global') {
     actions.append(h('button', { class: 'btn primary', onclick: () => onPromote(g.scope, g.slug) }, 'Promote to global'));
   }
@@ -916,7 +927,7 @@ function setMode(mode) {
   } else if (mode === 'terminal') {
     listEl.replaceChildren(
       h('div', { class: 'section-label', text: 'Terminal' }),
-      h('div', { class: 'project-card', text: 'Your shell, running inside Verqury. Type as normal, or drag text onto it.' }),
+      h('div', { class: 'project-card', text: 'Your shells, running inside Verqury — one tab per shell or project. Launch an adapter to open a project-pinned tab; “+” opens a plain shell.' }),
     );
     detailEl.className = 'detail terminal-mode';
     mountTerminal(detailEl);
@@ -973,10 +984,10 @@ async function init() {
     setMode('inbox');
     refreshInbox().then(() => info && selectArtifact(info.project, info.id));
   });
-  window.verqury.onNavTerminal(() => setMode('terminal'));
   await renderResumeStrip(); // greet with pending reminders on first open
   window.verqury.onAppShown(() => renderResumeStrip()); // and each foregrounding
   window.__verquryReady = true; // signal for headless verification
+  window.__verquryTerm = { openProjectTerminal, sendToActiveTerminal, newShellTab, ringBellForTest }; // headless verification hook
 }
 
 init();

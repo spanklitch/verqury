@@ -415,3 +415,36 @@ add/list/update/clear) + lint clean. VERQURY_VERIFY harness (block 8b, isolated
 terminal regression (adapterCards=5, terminalAdapterRouted=true). `hotkeyRegistered=false` again
 just reflects the live desktop's existing Ctrl+Alt+C grab; markdown/packet-context falses are
 thin-seed artifacts, not regressions (this diff touches only task/resume code).
+
+### 2026-07-12 — Multi-tab terminal (ADR-0010; v0.3.0 sibling phase)
+Promoted the embedded terminal from a singleton to a keyed `Map<id,…>` of sessions with a
+tab strip. **Main:** `ptys = Map<id,pty>`; `ptyStart(id,{shell,cwd})` pins cwd at spawn;
+`pty:data`/`pty:exit` carry the id; `pty:input`/`resize`/`kill` keyed by id; `before-quit`
+kills all. **Renderer (terminal.js):** `sessions = Map<id,{term,fit,wrap}>`, one global
+pair of PTY listeners dispatching by id, per-session persistent container moved in/out of
+view (the ADR-0009 trick, now per tab). Tab strip: click to switch, × to close, **+** for a
+plain shell (`shell:<n>`). **One tab per project (Gary's call):** launched tabs use a
+deterministic id `proj:<slug>` so relaunch focuses/restarts rather than duplicating.
+**Launch is renderer-driven:** `launchAdapter` (main) returns a `{id,label,cwd}` pin instead
+of touching a PTY; the renderer's `launchAdapterUI` opens the tab and writes the command —
+so the xterm listener attaches before output (no missed first line). Removed the old
+main-side `pty:send`/`nav:terminal`; "send to terminal" is now `sendToActiveTerminal` against
+the active tab. Anti-goal clear: several user-driven shells ≠ agent orchestration.
+
+**Verified:** 49 tests + lint green (terminal is UI-only; covered by the harness, not units).
+VERQURY_VERIFY harness block 10 rewritten for multi-tab, isolated root, running app — ALL
+green: terminalDefaultTab=1, terminalAdapterPin=true, terminalTwoTabs=2, terminalProjectPinned,
+terminalActiveRanCommand, terminalReuseNoDup, terminalTabsIsolated (shell tab has no trace of
+the project tab's output), terminalHasPrompt, terminalPersistsOnReturn (both tabs survive
+nav), terminalTabClosed — plus full P2–P7 + resume regression. Same hotkey/markdown/packet
+falses (env + thin-seed), unrelated. Small `window.__verquryTerm` hook added for the harness
+(like `__verquryReady`). **Both v0.3.0 sibling phases now built; ready to reconcile versions
+and release.**
+
+Bell/attention alerts folded in (Gary's ask): `term.onBell` → synthesized Web Audio beep +
+per-tab attention glow (background tabs only) + focus-gated desktop notification, with a
+🔔/🔕 mute toggle. Verified how Claude Code signals (per the "don't trust stale third-party
+memory" rule): it fires `idle_prompt`/`permission_prompt` but only desktop-notifies in
+Ghostty/Kitty/iTerm2, so the embedded xterm needs `preferredNotifChannel terminal_bell` — the
+BEL our `onBell` catches. Harness gained terminalBellAttention + terminalBellCleared (both
+true via a test-only `ringBellForTest` hook that writes BEL exactly as pty:data would).

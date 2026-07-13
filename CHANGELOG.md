@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (renders the handoff packet to the clipboard and boots the command in the embedded
   terminal). Pick the tool from the task detail's **Resume in** dropdown. Reuses the
   Phase-7 adapter registry — Verqury launches the tool, it does not orchestrate it.
+- **Multi-tab terminal** ([ADR-0010](docs/adr/0010-multi-session-terminal.md)): the
+  embedded terminal now runs **multiple concurrent sessions** with a tab strip. Launch
+  an adapter for a project to open (or focus) a **project-pinned tab** — relaunching the
+  same project focuses its tab instead of stacking duplicates; the **+** button opens a
+  plain shell tab; each tab's × closes just that one. Sessions have independent
+  scrollback and survive both tab switches and navigation away and back.
+- **Bell / attention alerts**: when a terminal rings the bell (BEL) — e.g. an agent
+  CLI finishing and awaiting your input — Verqury plays a short beep, glows the tab that
+  rang (so you know *which* one wants you), and, if Verqury is minimized, raises a desktop
+  notification. A 🔔/🔕 toggle in the terminal toolbar mutes it. (To make Claude Code ring
+  the bell in the embedded terminal: `claude config set --global preferredNotifChannel terminal_bell`.)
 
 ### Changed
 ### Fixed
