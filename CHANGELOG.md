@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-12
+
 ### Added
 - **Resume reminders** ("where you left off"): flag any task with **Remind me on
   open** and it surfaces in a strip across the top of the window each time you open
@@ -31,7 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CLI finishing and awaiting your input — Verqury plays a short beep, glows the tab that
   rang (so you know *which* one wants you), and, if Verqury is minimized, raises a desktop
   notification. A 🔔/🔕 toggle in the terminal toolbar mutes it. (To make Claude Code ring
-  the bell in the embedded terminal: `claude config set --global preferredNotifChannel terminal_bell`.)
+  the bell in the embedded terminal, add a `Notification` hook to `~/.claude/settings.json`
+  that runs `printf '\a' > /dev/tty` — its `terminal_bell` channel alone is gated and stays
+  silent in an embedded terminal.)
 
 ### Changed
 ### Fixed
@@ -143,7 +147,8 @@ and a config-driven adapter registry.
 - Renamed product Velora → **Verqury** (prior name in use by another company);
   applies to package names, CLI command, data root, and all docs.
 
-[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/spanklitch/verqury/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/spanklitch/verqury/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/spanklitch/verqury/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/spanklitch/verqury/compare/v0.1.0...v0.1.1
