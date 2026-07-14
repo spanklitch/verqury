@@ -23,6 +23,21 @@ outward-facing docs are README.md, CHANGELOG.md, docs/adr/, docs/engineering-not
 - Data layer schemas (frontmatter), packet template syntax, adapter config shape:
   all specified in plan §3–§4. The plan is the spec; don't re-derive.
 
+## Working convention: prefer official Skills, screen every pull
+
+Before building a new Skill — or hand-coding any multi-step, domain-knowledge task
+(doc/spreadsheet/PDF generation, MCP scaffolding, test harnesses, etc.) — check the
+official catalog at github.com/anthropics/skills first; don't reinvent a vetted
+skill. Skills ship executable Python/Shell scripts, so **every pull gets a mandatory
+security screen** (quarantine at a pinned commit → read SKILL.md + all scripts →
+grep for network/exec/credential/destructive/install/obfuscation → license check →
+confirm with Gary before installing into ~/.claude/skills/). Note the doc skills
+(docx/pdf/pptx/xlsx) are source-available, not open source. Two enforcement layers
+exist outside this repo: global Verqury guidance `check-official-skills-first`
+(auto-injects via the terminal-build bootstrap packet) and a non-blocking Claude
+Code PreToolUse/Write hook (`~/.claude/hooks/skill-check.js`) that fires on SKILL.md
+writes. Added 2026-07-13.
+
 ## Build-by-build notes
 
 ### 2026-07-06 — Phase 0
