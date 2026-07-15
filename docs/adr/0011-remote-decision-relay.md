@@ -1,7 +1,28 @@
 # 0011. Remote decision relay — approve builds from the phone via Here/Away + hooks
 
-- **Status:** Accepted (Phase A built 2026-07-14; Phases B–C planned)
-- **Date:** 2026-07-14
+- **Status:** Accepted (Phase A built 2026-07-14; **Phase B built 2026-07-15**; Phase C planned)
+- **Date:** 2026-07-14 (amended 2026-07-15)
+
+## Amendment (2026-07-15) — Phase B as built
+
+Building the interactive gate surfaced one **correction to the contract this ADR assumed**,
+verified against the current hook docs (code.claude.com/docs/en/hooks) rather than memory:
+
+- The `PermissionRequest` hook returns `hookSpecificOutput.decision.behavior`, and the ONLY
+  accepted values are **`allow`** / **`deny`** — there is **no `ask`**. The "expire → ask"
+  fallback this ADR describes is therefore implemented by the hook **emitting no decision
+  (exit 0, no JSON)**, which lets Claude Code's normal desktop permission dialog proceed and
+  wait. This is cleaner than a literal `ask` and preserves the ruling exactly. Confirmed:
+  default timeout is **600 s and it FAILS OPEN** (timeout ⇒ proceed), so the hook self-expires
+  at 9 min and emits nothing — a missed prompt parks at the desk, never auto-approves.
+- **Naming:** the "Decision Inbox" ships as the **`approvals`** module/dir
+  (`core/src/approvals.js`, `<root>/approvals/`) to avoid colliding with the existing
+  per-project architecture-decision log (`memory/decisions`). Stored **globally** (like
+  packets) so the dependency-free hook writes one without resolving a project.
+- **Telegram ownership:** `getUpdates` is a **single-consumer** long-poll, so the **app** owns
+  it (one loop, routes callbacks to records by `#id`); the hook only writes/polls files. Phase
+  B's tap therefore needs the app running (it always is — the build runs in its terminal), and
+  the hook's file-based self-expire degrades safely to the desk even if the app is down.
 
 ## Context
 

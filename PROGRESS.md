@@ -15,10 +15,9 @@ verify success criteria, update this file.
 - [x] **Phase 6 — Task router** (2026-07-07)
 - [x] **Phase 7 — Adapter registry + launch** (2026-07-07)
 - [x] **Phase 8 — Packaging, docs, release prep** (2026-07-08 — AppImage built + verified running; only v0.1.0 tag + push remain)
-- [x] **Remote decision relay — Phase A** (2026-07-14 — Here/Away + Telegram notify hook; code+harness verified, live phone test pending Gary)
-- [ ] **Remote decision relay — Phase B** (planned; plan §8) — next up
-
-- [ ] **Remote decision relay — Phase C** (planned; plan §8)
+- [x] **Remote decision relay — Phase A** (2026-07-14 — Here/Away + Telegram notify hook; code+harness verified, live phone verified)
+- [x] **Remote decision relay — Phase B** (2026-07-15 — approve-by-tap: PermissionRequest gate + Approval inbox + app Telegram round-trip; 61 tests + harness verified, live phone test pending Gary)
+- [ ] **Remote decision relay — Phase C** (planned; plan §8) — next up
 
 ## Open questions (plan §7)
 
@@ -491,6 +490,44 @@ contract) in engineering-notes §6; secret handling in §5.
 buzzing Gary's **actual phone** — needs his BotFather token + chat_id + phone (mirrors Phase 8's
 AppImage: build everything, human does the live verification). Everything up to the network POST
 is proven. **No git push** (awaits Gary). Phase B (interactive approve-by-tap gate) is next.
+
+### 2026-07-15 — Remote decision relay: Phase B (build session, Opus 4.8)
+**Shipped:** "Approve builds by tap." The interactive gate. Core `approvals.js` — a third
+file-backed inbox (`<root>/approvals/<ulid>.md`, **global** like packets so the dependency-free
+hook writes without resolving a project; named `approvals` to avoid colliding with the
+`memory/decisions` architecture-decision log): `createApproval`/`getApproval`/`listApprovals`/
+`pendingApprovals`/`answerApproval`(allow|deny, atomic write + project-timeline echo)/
+`expireApproval`; `approval list|answer|expire` CLI. **Blocking hook** `hooks/verqury-permission.cjs`
+(dependency-free `PermissionRequest`): HERE/disabled → emit nothing (native prompt); AWAY+enabled+
+chat+token → file a pending record, poll it, self-expire at 9 min → emit nothing (desk fallback);
+on answer emit `{hookSpecificOutput:{hookEventName:'PermissionRequest',decision:{behavior:allow|deny}}}`.
+App: single Telegram long-poll (`app/src/telegram.js` — getUpdates/sendApprovalCard/editMessageText/
+answerCallbackQuery), sends the inline **[✅ Approve][⛔ Deny]** card per pending approval, writes the
+tapped verdict into the record, T=7min "expiring" nudge; new **Approvals tab** (waiting/resolved +
+desktop Approve/Deny + pending-count badge); IPC + preload bridge; `approvalsDir` added to the watcher
+and created at `init()` so the first pending fires the watcher.
+
+**Corrected the ADR-0011 contract against live docs (not memory):** `PermissionRequest` returns
+`decision.behavior` ∈ **allow/deny only** (no `ask`) — the "expire→ask" ruling is realized by emitting
+nothing; the 600 s timeout **fails open**, so the 9-min self-expire is load-bearing. Amendment written
+into ADR-0011; gotchas (single-consumer getUpdates, Atomics.wait sync sleep, chokidar-watch-a-dir-that-
+must-exist, hook⇄core cross-reader contract, atomic answer write) in engineering-notes **§7**.
+
+**Verified:**
+- 61 tests green (47 core incl. **7 new approvals**: create/list, answer+clear, allow/deny-only guard,
+  timeline echo, bad-project-silent, expire-vs-prior-answer, **hook⇄core cross-reader**; 14 app) + lint clean.
+- Hook proven headlessly across all gate cases (disabled/here → engage:false; away+configured → files the
+  record; real poll loop with short timers: pre-answered → emits allow; no-answer → emits nothing + marks expired).
+- VERQURY_VERIFY harness (new **block 12**, before the terminal block; relay skipped under the harness — no
+  network): **permHookFiled**, **approvalPendingOnDisk**, **approvalInboxCard**, **approvalTabBadge**,
+  **approvalDesktopAnswered**, **approvalClearedFromPending**, **permHookGatesWhenHere** — all green in the
+  running app. (Ran on the real X display; xvfb not installed. Three unrelated checks — markdownRendered/
+  packetHasContext/packetFileWritten — false only because the test used a minimal one-project seed lacking
+  their rich content; not regressions.)
+
+**Not done (deliberate handoff):** the live phone round-trip (tap Approve on the real phone → build proceeds)
+needs Gary's bot + phone, like Phase A. Everything up to the Telegram network I/O is proven. **No git push /
+no AppImage build** (awaits Gary). Version bumped 0.4.0 → 0.5.0. Phase C (verqury-ask skill + email long-form) is next.
 
 ### 2026-07-14 — Planning session: remote decision relay (no code)
 Designed, with Gary, a way to monitor/answer running Claude Code builds from his phone while

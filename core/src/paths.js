@@ -30,6 +30,12 @@ export function packetsDir(root) {
   return path.join(root, 'packets');
 }
 
+// Remote-relay approval inbox (ADR-0011, Phase B). Global, like packets — the
+// dependency-free PermissionRequest hook writes here without resolving a project.
+export function approvalsDir(root) {
+  return path.join(root, 'approvals');
+}
+
 // All paths inside a single project's directory.
 export function projectPaths(root, slug) {
   const base = path.join(projectsDir(root), slug);

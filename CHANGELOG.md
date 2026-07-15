@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-15
+
+### Added
+- **Remote decision relay — Phase B: approve builds by tap** ([ADR-0011](docs/adr/0011-remote-decision-relay.md),
+  build plan §8). When a running Claude Code build asks permission while you are **Away**,
+  Verqury relays the request to your phone with inline **✅ Approve / ⛔ Deny** buttons and
+  returns your tap to the build — you keep making the call from anywhere. A blocking Claude
+  Code `PermissionRequest` hook (`hooks/verqury-permission.cjs`) files the request into a new
+  file-backed **Approval inbox** (`<data-root>/approvals/`) and blocks on it; the app is the
+  single Telegram long-poll consumer, sends the card, and writes your verdict back into the
+  record. No terminal scraping, no keystroke injection — everything file-mediated (ADR-0001).
+  If nobody answers within ~9 min the request **falls back to the desktop prompt** (never an
+  auto-answer): the hook self-expires safely below Claude Code's 600 s fail-open timeout.
+  New **Approvals** tab (waiting / resolved, with a desktop Approve/Deny that drives the same
+  path a tap does) and a pending-count badge. CLI: `verqury approval list|answer|expire`.
+  Verqury stays a **relay** — it carries the question and the answer; you decide.
+
 ## [0.4.0] - 2026-07-14
 
 ### Added

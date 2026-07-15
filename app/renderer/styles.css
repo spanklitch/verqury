@@ -280,6 +280,19 @@ body {
   .badge.status-done { color: #6fd3a6; }
 }
 
+/* Approvals (remote decision relay, ADR-0011 Phase B) */
+.badge.approval-pending { background: color-mix(in srgb, var(--accent-2, #d0a536) 22%, transparent); color: #a5791c; border-color: transparent; }
+.badge.approval-answered { background: color-mix(in srgb, #36b37e 22%, transparent); color: #1f8f5f; border-color: transparent; }
+.badge.approval-expired { background: var(--panel-2); color: var(--ink-soft); border-color: transparent; }
+.btn.danger { color: #b4483a; border-color: color-mix(in srgb, #b4483a 40%, transparent); }
+.btn.danger:hover { background: color-mix(in srgb, #b4483a 12%, transparent); }
+.tab.attention { color: var(--accent); font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .badge.approval-pending { color: #e0bd6a; }
+  .badge.approval-answered { color: #6fd3a6; }
+  .btn.danger { color: #e08578; }
+}
+
 /* Adapters / settings */
 .adapter-card { padding: 9px 11px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
 .adapter-card:hover { background: var(--panel-2); }

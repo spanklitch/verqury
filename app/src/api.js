@@ -48,6 +48,10 @@ import {
   getNotify,
   setPresence as coreSetPresence,
   updateNotify as coreUpdateNotify,
+  listApprovals,
+  pendingApprovals,
+  answerApproval,
+  expireApproval,
   listAdapters,
   getAdapter,
   addAdapter,
@@ -284,6 +288,27 @@ export function setTelegramToken(token) {
 
 export function hasEnvVar(key) {
   return Boolean(readEnvVar(key));
+}
+
+// MAIN-PROCESS ONLY. The relay loop in Electron main needs the actual token to talk
+// to Telegram. This is deliberately never wired to an IPC handler — the renderer only
+// ever learns tokenSet:boolean (getNotifyConfig), never the value.
+export function readTelegramToken() {
+  return readEnvVar(TELEGRAM_TOKEN_KEY);
+}
+
+// ---- Approval inbox (ADR-0011, Phase B) ----
+export function getApprovals(root, filters) {
+  return listApprovals(root, filters || {});
+}
+export function getPendingApprovals(root) {
+  return pendingApprovals(root);
+}
+export function decideApproval(root, id, decision) {
+  return answerApproval(root, id, decision);
+}
+export function parkApproval(root, id) {
+  return expireApproval(root, id);
 }
 
 function readEnvVar(key) {
