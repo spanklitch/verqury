@@ -51,3 +51,46 @@ Then register it as a `Notification` hook in `~/.claude/settings.json`
 echo '{"message":"Claude needs your permission to run Bash","cwd":"/x/proj","session_id":"abcd1234"}' \
   | VERQURY_NOTIFY_DRYRUN=1 VERQURY_DATA_ROOT=/path/to/root node hooks/verqury-notify.cjs
 ```
+
+## `verqury-permission.cjs` — Phase B (interactive approve-by-tap gate)
+
+A **blocking** Claude Code `PermissionRequest` hook. When Verqury is set to **Away**
+and notifications are enabled, it files the permission request into the Approval inbox
+(`<data-root>/approvals/`) and blocks until you tap **✅ Approve / ⛔ Deny** on your phone —
+then returns that verdict to the build. If nobody answers within ~9 minutes it emits **no
+decision**, so Claude Code's normal desktop prompt takes over (it never auto-answers). When
+you are **Here** (or the relay isn't configured) it emits nothing immediately — zero interference.
+
+- Same config/secret sources as the notify hook (`config.json` + `~/.claude/.env`); the token
+  is never logged. Zero dependencies. The **Verqury app must be running** to relay the tap (it
+  owns the single Telegram long-poll); if it isn't, the request simply falls back to the desk.
+- Self-expires at 9 min — safely under Claude Code's 600 s blocking-hook timeout, which
+  **fails open** (a naive waiting hook would auto-approve).
+
+### Install
+
+```sh
+cp hooks/verqury-permission.cjs ~/.claude/hooks/verqury-permission.cjs
+```
+
+Register it as a `PermissionRequest` hook in `~/.claude/settings.json` (alongside any existing ones):
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      { "hooks": [{ "type": "command", "command": "node /home/USER/.claude/hooks/verqury-permission.cjs", "timeout": 600 }] }
+    ]
+  }
+}
+```
+
+### Dry-run (gate + file the record, no blocking; for testing)
+
+```sh
+echo '{"tool_name":"Bash","tool_input":{"command":"git commit -m wip"},"cwd":"/x/proj","session_id":"abcd1234"}' \
+  | VERQURY_PERMISSION_DRYRUN=1 VERQURY_DATA_ROOT=/path/to/root node hooks/verqury-permission.cjs
+```
+
+`VERQURY_PERMISSION_EXPIRE_MS` / `VERQURY_PERMISSION_POLL_MS` shrink the timers to exercise the
+real blocking poll loop (answer / expire) in a test.

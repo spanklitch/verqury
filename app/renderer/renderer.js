@@ -24,6 +24,8 @@ const state = {
   guidance: [],
   artifacts: [],
   tasks: [],
+  approvals: [], // remote decision-relay inbox (ADR-0011, Phase B)
+  activeApproval: null, // { id }
   adapters: [],
   notify: null, // remote-relay config { presence, enabled, telegram, tokenSet, hookInstalled }
   activeProject: null, // selected project in the projects view
@@ -330,6 +332,83 @@ async function refreshInbox() {
   state.artifacts = await window.verqury.listArtifacts({});
   if (searchEl.value.trim()) return;
   if (state.mode === 'inbox') renderInboxList();
+}
+
+/* ---------- approvals (remote decision relay, ADR-0011 Phase B) ---------- */
+
+function approvalStatusLabel(a) {
+  if (a.status === 'answered') return a.decision === 'allow' ? '✅ approved' : '⛔ denied';
+  if (a.status === 'expired') return '⏱ parked at desk';
+  return '🔔 waiting';
+}
+
+function renderApprovalList() {
+  const pending = state.approvals.filter((a) => a.status === 'pending');
+  const resolved = state.approvals.filter((a) => a.status !== 'pending');
+  listEl.replaceChildren(
+    h('div', { class: 'capture-controls' },
+      h('div', { class: 'capture-row' },
+        h('span', { class: 'muted', text: `${pending.length} waiting` }),
+        h('span', { class: 'muted', text: state.notify?.presence === 'away' ? 'Away — relaying to phone' : 'Here — desk prompts' }))),
+  );
+  if (!state.approvals.length) {
+    listEl.append(h('div', { class: 'project-card', text: 'No approvals yet. When a build asks permission while you are Away, it shows here and on your phone.' }));
+    return;
+  }
+  const card = (a) => {
+    const active = state.activeApproval && state.activeApproval.id === a.id;
+    return h('div', { class: `artifact-card${active ? ' active' : ''}`, onclick: () => selectApproval(a.id) },
+      h('div', { class: 'card-meta' },
+        h('span', { class: `badge kind approval-${a.status}`, text: approvalStatusLabel(a) }),
+        a.project ? h('span', { class: 'badge', text: a.project }) : null),
+      h('div', { class: 'preview', text: a.summary || a.tool || '(permission)' }),
+      h('div', { class: 'when', text: (a.created ?? '').replace('T', ' ').slice(0, 16) }));
+  };
+  if (pending.length) listEl.append(h('div', { class: 'section-label', text: 'Waiting on you' }));
+  for (const a of pending) listEl.append(card(a));
+  if (resolved.length) listEl.append(h('div', { class: 'section-label', text: 'Resolved' }));
+  for (const a of resolved) listEl.append(card(a));
+}
+
+function renderApprovalDetail(a) {
+  const body = h('pre', { class: 'artifact-body' });
+  body.textContent = a.body || '(no details)';
+  const kids = [
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: a.summary || a.tool || 'Approval' })),
+    h('div', { class: 'detail-sub', text: `${approvalStatusLabel(a)} · ${a.project || 'no project'} · ${(a.created ?? '').replace('T', ' ').slice(0, 19)}` }),
+  ];
+  if (a.status === 'pending') {
+    kids.push(h('div', { class: 'detail-actions' },
+      h('button', { class: 'btn primary', onclick: async () => { await window.verqury.answerApproval(a.id, 'allow'); toast('Approved'); await refreshApprovals(); } }, '✅ Approve'),
+      h('button', { class: 'btn danger', onclick: async () => { await window.verqury.answerApproval(a.id, 'deny'); toast('Denied'); await refreshApprovals(); } }, '⛔ Deny')));
+    kids.push(h('div', { class: 'detail-sub muted', text: 'Or tap the card on your phone. No answer in ~9 min → the build falls back to the desktop prompt.' }));
+  }
+  kids.push(body);
+  detailEl.replaceChildren(...kids);
+}
+
+async function selectApproval(id) {
+  state.activeApproval = { id };
+  renderApprovalList();
+  const a = state.approvals.find((x) => x.id === id);
+  const full = await window.verqury.listApprovals({});
+  const rec = full.find((x) => x.id === id) || a;
+  renderApprovalDetail(rec);
+}
+
+function updateApprovalBadge() {
+  const tab = document.querySelector('.tab[data-mode=approvals]');
+  if (!tab) return;
+  const n = state.approvals.filter((a) => a.status === 'pending').length;
+  tab.textContent = n ? `Approvals (${n})` : 'Approvals';
+  tab.classList.toggle('attention', n > 0);
+}
+
+async function refreshApprovals() {
+  state.approvals = await window.verqury.listApprovals({});
+  updateApprovalBadge();
+  if (searchEl.value.trim()) return;
+  if (state.mode === 'approvals') renderApprovalList();
 }
 
 // Launch an adapter; if it targets the embedded terminal, open (or focus) that
@@ -1005,6 +1084,9 @@ function setMode(mode) {
   } else if (mode === 'tasks') {
     renderTaskList();
     detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select a task, or create a new one.' }));
+  } else if (mode === 'approvals') {
+    renderApprovalList();
+    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select an approval. Pending ones are waiting for your tap (here or on your phone).' }));
   } else if (mode === 'terminal') {
     listEl.replaceChildren(
       h('div', { class: 'section-label', text: 'Terminal' }),
@@ -1030,6 +1112,7 @@ searchEl.addEventListener('input', () => {
       if (state.mode === 'guidance') return renderGuidanceList();
       if (state.mode === 'inbox') return renderInboxList();
       if (state.mode === 'tasks') return renderTaskList();
+      if (state.mode === 'approvals') return renderApprovalList();
       if (state.mode === 'terminal') return;
       return renderSettingsList();
     }
@@ -1042,6 +1125,7 @@ async function refreshAll() {
   await refreshGuidance();
   await refreshInbox();
   await refreshTasks();
+  await refreshApprovals();
   await refreshAdapters();
 }
 
@@ -1056,10 +1140,12 @@ async function init() {
   state.guidance = await window.verqury.listAllGuidance();
   state.artifacts = await window.verqury.listArtifacts({});
   state.tasks = await window.verqury.listTasks({});
+  state.approvals = await window.verqury.listApprovals({});
   state.adapters = await window.verqury.listAdapters();
   state.notify = await window.verqury.getNotify();
   state.captureTarget = (await window.verqury.getActiveProject()) || (state.projects[0]?.slug ?? null);
   renderProjectList();
+  updateApprovalBadge(); // reflect any pending approvals on the tab at startup
   if (state.projects.length) await selectProject(state.projects[0].slug);
   window.verqury.onDataChanged(() => refreshAll());
   window.verqury.onArtifactCaptured((info) => {

@@ -239,3 +239,35 @@ makes `createWindow(false)` start the app in the tray without showing a window.
 - **Optional live diagnostic:** set `VERQURY_NOTIFY_DEBUG=1` on the hook command in
   `settings.json` to append each invocation (raw payload, gate state, decision — never the
   token) to `~/.claude/verqury-notify.log`. Off by default; how we captured the payload above.
+
+## 7. Remote decision relay — the interactive gate (Phase B, ADR-0011)
+
+- **`PermissionRequest` output ≠ `PreToolUse` output (verified against current docs, not
+  memory).** `PreToolUse` returns `hookSpecificOutput.permissionDecision` ∈ allow/deny/ask/defer;
+  `PermissionRequest` returns `hookSpecificOutput.decision.behavior` ∈ **allow/deny only**. We use
+  `PermissionRequest` because it fires only when a prompt would actually appear (not on every tool
+  call). The "ask"/desk fallback is **emit nothing** (exit 0, no JSON) → the native dialog proceeds.
+- **The 600 s blocking-hook timeout FAILS OPEN** (timeout ⇒ proceed/allow). A naive waiting hook
+  would silently auto-approve while you're away. So the gate **self-times at 9 min** (60 s margin)
+  and emits nothing → parks at the desk. This is load-bearing; do not raise the expire past ~9 min.
+- **Synchronous sleep in the hook** uses `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),
+  0, 0, ms)` — a real, non-busy blocking sleep. `PermissionRequest` hooks are *meant* to block, so
+  the hook stays a simple sequential poll loop rather than an async runtime.
+- **Telegram `getUpdates` is single-consumer.** Two pollers steal each other's updates, so exactly
+  ONE process may long-poll: the **app** owns it and routes callbacks to records by `#id`; the hook
+  only writes/polls files. (Sending — `sendMessage` — is fine from anywhere, which is why Phase A's
+  fire-and-forget notify can POST straight from the hook.) `getUpdates` uses `allowed_updates:
+  ['callback_query']` and an in-memory offset; stale callbacks after a restart are ignored (the
+  approval is gone or no longer pending).
+- **chokidar won't watch a directory that doesn't exist yet.** The first pending approval was
+  written but never fired `data:changed` until we made `init()` create `<root>/approvals/` up front
+  (like `projects/` and `guidance/`). Watch the dir from the start, not on first write.
+- **Cross-reader contract (hook ⇄ core).** The dependency-free hook hand-writes the record with a
+  flat, JSON-quoted-scalar YAML frontmatter that gray-matter (core) parses back identically; core
+  answers it by rewriting via gray-matter, which the hook reads with a quote-tolerant regex
+  (`/^decision:\s*"?(allow|deny)"?/m`). A unit test writes a hook-shaped file and asserts core reads
+  it, so the two serializers can't drift. Answers are written **atomically** (temp + rename) because
+  the hook is polling the file concurrently.
+- **The relay is skipped under `VERQURY_VERIFY`** (no network in the headless harness): the harness
+  proves the file-mediated spine (hook files → inbox card → tab badge → desktop verdict → cleared →
+  gates when Here) via a real hook subprocess; the live Telegram round-trip is the phone test.

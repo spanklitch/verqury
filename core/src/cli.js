@@ -16,6 +16,7 @@ import * as packets from './packets.js';
 import * as tasks from './tasks.js';
 import * as adapters from './adapters.js';
 import * as notify from './notify.js';
+import * as approvals from './approvals.js';
 import * as search from './search.js';
 
 const OPTIONS = {
@@ -63,6 +64,9 @@ Usage: verqury <command> [args] [--data-root <dir>]
   active [<project>]                   Get or set the project new captures file into
   adapter list                         Configured AI surfaces (launch/handoff)
   notify [here|away|enable|disable|chat-id <id>]   Remote-relay presence + Telegram (ADR-0011)
+  approval list [--status pending|answered|expired] [--json]   Remote approval inbox (Phase B)
+  approval answer <id> <allow|deny>    Record a verdict on a pending approval
+  approval expire <id>                 Park a pending approval at the desk
   packet list
   packet render <packet> <project>     Render a bootstrap packet [--out file] [--log N]
   task add <project> <title...>        [--route r] [--surface s] [--resume] (or --body -)
@@ -407,6 +411,34 @@ function main() {
         return;
       }
       return fail(`unknown notify subcommand: ${sub}`);
+    }
+
+    case 'approval': {
+      // Remote approval inbox (ADR-0011, Phase B). The hook writes pending records;
+      // this exposes them for scripting/inspection and lets a verdict be recorded.
+      if (sub === 'list' || !sub) {
+        const list = approvals.listApprovals(root, values.status ? { status: values.status } : {});
+        if (values.json) return void console.log(JSON.stringify(list));
+        if (!list.length) return console.log('(no approvals)');
+        for (const a of list) console.log(`${a.id}\t${a.status}\t${a.decision ?? '—'}\t${a.tool ?? '—'}\t${a.summary ?? ''}`);
+        return;
+      }
+      if (sub === 'answer') {
+        const id = positionals[2];
+        const decision = positionals[3];
+        if (!id || !decision) fail('approval answer needs <id> <allow|deny>');
+        const a = approvals.answerApproval(root, id, decision);
+        console.log(`${a.id}: ${a.decision}`);
+        return;
+      }
+      if (sub === 'expire') {
+        const id = positionals[2];
+        if (!id) fail('approval expire needs an <id>');
+        const a = approvals.expireApproval(root, id);
+        console.log(`${a.id}: ${a.status}`);
+        return;
+      }
+      return fail(`unknown approval subcommand: ${sub}`);
     }
 
     case 'adapter': {

@@ -59,6 +59,10 @@ contextBridge.exposeInMainWorld('verqury', {
   setTelegramToken: (token) => ipcRenderer.invoke('notify:setToken', token),
   onNotifyChanged: (cb) => ipcRenderer.on('notify:changed', () => cb()),
 
+  listApprovals: (filters) => ipcRenderer.invoke('approvals:list', filters),
+  answerApproval: (id, decision) => ipcRenderer.invoke('approval:answer', id, decision),
+  expireApproval: (id) => ipcRenderer.invoke('approval:expire', id),
+
   listAdapters: () => ipcRenderer.invoke('adapters:list'),
   addAdapter: (adapter) => ipcRenderer.invoke('adapter:add', adapter),
   updateAdapter: (slug, patch) => ipcRenderer.invoke('adapter:update', slug, patch),

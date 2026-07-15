@@ -45,6 +45,7 @@ function ptyKill(id) {
 import { addLog } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
+import * as telegram from './src/telegram.js';
 
 // Track text WE put on the clipboard, so clipboard-watch doesn't re-capture it.
 let selfWrite = '';
@@ -223,13 +224,20 @@ function setupIpc() {
   ipcMain.handle('notify:setPresence', (_e, presence) => {
     api.changePresence(root, presence);
     if (tray) tray.setContextMenu(buildTrayMenu());
+    syncRelay();
     return notifyState();
   });
   ipcMain.handle('notify:update', (_e, patch) => {
     api.updateNotifyConfig(root, patch);
+    syncRelay();
     return notifyState();
   });
-  ipcMain.handle('notify:setToken', (_e, token) => api.setTelegramToken(token));
+  ipcMain.handle('notify:setToken', (_e, token) => { const r = api.setTelegramToken(token); syncRelay(); return r; });
+
+  // Approval inbox (ADR-0011, Phase B): list + desktop verdict (same core path a tap uses).
+  ipcMain.handle('approvals:list', (_e, filters) => api.getApprovals(root, filters));
+  ipcMain.handle('approval:answer', (_e, id, decision) => api.decideApproval(root, id, decision));
+  ipcMain.handle('approval:expire', (_e, id) => api.parkApproval(root, id));
 
   ipcMain.handle('pty:start', (_e, id, opts) => ptyStart(id, opts));
   ipcMain.on('pty:input', (_e, id, data) => { const p = ptys.get(id); if (p) p.write(data); });
@@ -260,6 +268,128 @@ function notifyHookInstalled() {
 // Enriched notify state for the renderer: core config + secret/hook status.
 function notifyState() {
   return { ...api.getNotifyConfig(root), hookInstalled: notifyHookInstalled() };
+}
+
+// ---- Remote decision relay — Phase B: the interactive approve-by-tap gate (ADR-0011) ----
+// The app is the SINGLE Telegram consumer: it long-polls getUpdates, sends an inline
+// [Approve][Deny] card for each pending approval the hook files, and writes the tapped
+// verdict into the record — which the blocking hook is polling for. It never decides on
+// the owner's behalf; a missed tap expires (in the hook) to the desktop prompt.
+const REMIND_AFTER_MS = 7 * 60 * 1000; // "expiring soon" nudge (hook expires at 9 min)
+const relayCards = new Map(); // approvalId -> { messageId, remindedAt }
+let relayGen = 0; // bumps to retire a stale long-poll loop when config changes
+let relayOffset; // Telegram getUpdates offset (in-memory; stale callbacks are ignored)
+
+function relayConfig() {
+  const cfg = api.getNotifyConfig(root); // { enabled, presence, telegram:{chatId}, ... }
+  return { enabled: cfg.enabled === true, chatId: cfg.telegram?.chatId || '', token: api.readTelegramToken() };
+}
+
+// Start or stop the long-poll to match current config. Called at startup and after any
+// notify change. Skipped under the headless harness (no network; approvals tested direct).
+function syncRelay() {
+  if (process.env.VERQURY_VERIFY) return;
+  const { enabled, chatId, token } = relayConfig();
+  const shouldRun = enabled && Boolean(chatId) && Boolean(token);
+  relayGen++; // retire any running loop
+  if (shouldRun) {
+    const gen = relayGen;
+    relayLoop(gen, token, chatId);
+    reconcileApprovals();
+  }
+}
+
+async function relayLoop(gen, token, chatId) {
+  while (gen === relayGen) {
+    try {
+      const res = await telegram.getUpdates(token, relayOffset);
+      if (gen !== relayGen) return;
+      for (const u of res.result || []) {
+        relayOffset = u.update_id + 1;
+        if (u.callback_query) await handleCallback(u.callback_query, token, chatId);
+      }
+    } catch {
+      await new Promise((r) => setTimeout(r, 5000)); // transient network error — back off
+    }
+  }
+}
+
+// A tap arrived. Parse a:<id> / d:<id>, record the verdict (the hook is polling for it),
+// acknowledge the tap, and neutralize the card so it can't be double-answered.
+async function handleCallback(cbq, token, chatId) {
+  const m = String(cbq.data || '').match(/^([ad]):(.+)$/);
+  if (!m) return;
+  const decision = m[1] === 'a' ? 'allow' : 'deny';
+  const id = m[2];
+  const card = relayCards.get(id);
+  try {
+    const appr = api.getApprovals(root, {}).find((a) => a.id === id);
+    if (!appr || appr.status !== 'pending') {
+      await telegram.answerCallbackQuery(token, cbq.id, 'Already handled');
+    } else {
+      api.decideApproval(root, id, decision);
+      await telegram.answerCallbackQuery(token, cbq.id, decision === 'allow' ? 'Approved ✅' : 'Denied ⛔');
+      const messageId = card?.messageId ?? cbq.message?.message_id;
+      if (messageId) {
+        await telegram.editMessageText(token, chatId, messageId, `${decision === 'allow' ? '✅ Approved' : '⛔ Denied'} · ${appr.summary || appr.tool || 'permission'}`);
+      }
+    }
+  } catch {
+    /* never throw out of the loop */
+  }
+  relayCards.delete(id);
+}
+
+// Reconcile the phone with the inbox: send a card for each new pending approval, nudge
+// the ones nearing expiry, and close out cards whose record has since resolved/expired.
+let reconciling = false;
+async function reconcileApprovals() {
+  if (process.env.VERQURY_VERIFY || reconciling) return;
+  const { enabled, chatId, token } = relayConfig();
+  if (!enabled || !chatId || !token) return;
+  reconciling = true;
+  try {
+    const all = api.getApprovals(root, {});
+    const pendingIds = new Set();
+    for (const a of all) {
+      if (a.status === 'pending') {
+        pendingIds.add(a.id);
+        const card = relayCards.get(a.id);
+        if (!card) {
+          relayCards.set(a.id, { messageId: null, remindedAt: null }); // claim before await (no dup)
+          const res = await telegram.sendApprovalCard(token, chatId, cardText(a), a.id);
+          const messageId = res?.result?.message_id ?? null;
+          if (messageId) relayCards.set(a.id, { messageId, remindedAt: null });
+          else relayCards.delete(a.id); // send failed — retry next reconcile
+        } else if (card.messageId && !card.remindedAt && Date.now() - Date.parse(a.created) > REMIND_AFTER_MS) {
+          card.remindedAt = Date.now();
+          await telegram.sendMessage(token, chatId, `⏳ Expiring in ~2 min — #${short(a.id)}\n${a.summary || a.tool || 'permission'}`);
+        }
+      }
+    }
+    // A card whose approval is no longer pending (hook expired it) → close it out.
+    for (const [id, card] of relayCards) {
+      if (pendingIds.has(id)) continue;
+      const appr = all.find((a) => a.id === id);
+      if (appr && appr.status === 'expired' && card.messageId) {
+        await telegram.editMessageText(token, chatId, card.messageId, `⏱ Expired — parked at your desk · ${appr.summary || appr.tool || 'permission'}`);
+      }
+      relayCards.delete(id);
+    }
+  } catch {
+    /* best-effort; next reconcile retries */
+  } finally {
+    reconciling = false;
+  }
+}
+
+const short = (id) => String(id).slice(-6);
+function cardText(a) {
+  return [
+    `🔔 Approve this? #${short(a.id)}`,
+    a.summary || a.tool || 'Permission needed',
+    [a.project && `📁 ${a.project}`, a.sessionId && `#${a.sessionId}`].filter(Boolean).join('  '),
+  ].filter(Boolean).join('\n');
 }
 
 function notify(body) {
@@ -328,6 +458,8 @@ function setupWatcher() {
     // Keep the FTS index current while the app runs (debounced, out-of-process).
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => api.refreshIndex(root), 400);
+    // A new pending approval (or a hook-driven expiry) may have landed — relay it.
+    reconcileApprovals();
   });
 }
 
@@ -359,6 +491,7 @@ function buildTrayMenu() {
       click: (item) => {
         api.changePresence(root, item.checked ? 'away' : 'here');
         if (tray) tray.setContextMenu(buildTrayMenu());
+        syncRelay();
         if (win && !win.isDestroyed()) win.webContents.send('notify:changed');
       },
     },
@@ -588,6 +721,53 @@ async function runVerify(outDir) {
     await wait(150);
     result.notifyTokenStatus = await dom("[...document.querySelectorAll('.status-line')].some(s=>/saved to/.test(s.textContent))");
 
+    // (12) remote decision relay — Phase B (ADR-0011): the interactive approve-by-tap
+    // gate. Placed with block 11 (before terminal) so it never needs node-pty. The live
+    // Telegram round-trip is proven on the phone; here we prove the file-mediated spine:
+    // the PermissionRequest hook FILES a pending approval when Away, the app's Approval
+    // inbox surfaces it, a desktop verdict resolves it (the same core path a tap uses),
+    // and the hook GATES to the desktop prompt when Here.
+    await dom("window.verqury.setPresence('away')"); // block 11 left it Here
+    await wait(150);
+    const permHook = path.join(dir, '..', 'hooks', 'verqury-permission.cjs');
+    if (fs.existsSync(permHook)) {
+      const runPerm = (payload, extraEnv = {}) => {
+        const out = execFileSync(process.execPath, [permHook], {
+          input: JSON.stringify(payload),
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VERQURY_PERMISSION_DRYRUN: '1', VERQURY_DATA_ROOT: root, VERQURY_ENV_FILE: envFile, ...extraEnv },
+          encoding: 'utf8',
+        }).trim();
+        return out ? JSON.parse(out) : {};
+      };
+      // Away + configured → the hook files a pending approval with a readable summary.
+      const filed = runPerm({ tool_name: 'Bash', tool_input: { command: 'git commit -m ship' }, cwd: path.join(root, 'projects', slug), session_id: 'sessB1234567' });
+      result.permHookFiled = filed.engage === true && /git commit -m ship/.test(filed.summary || '');
+      const pend = api.getPendingApprovals(root);
+      result.approvalPendingOnDisk = pend.length === 1 && pend[0].id === filed.id;
+      // It surfaces in the Approvals inbox, and the tab shows a waiting count. The
+      // watcher (approvals/ is watched from init) pushes data:changed → refresh; give
+      // that a beat to settle before rendering the tab.
+      await wait(600);
+      await dom("document.querySelector('.tab[data-mode=approvals]').click()");
+      await wait(250);
+      result.approvalInboxCard = await dom("[...document.querySelectorAll('#list .artifact-card .preview')].some(p=>p.textContent.includes('git commit -m ship'))");
+      result.approvalTabBadge = await dom("(document.querySelector('.tab[data-mode=approvals]')?.textContent||'').includes('(1)')");
+      // A desktop verdict resolves it — the identical core path a phone tap drives.
+      await dom(`window.verqury.answerApproval(${JSON.stringify(filed.id)}, 'allow')`);
+      await wait(200);
+      const resolved = api.getApprovals(root, {}).find((a) => a.id === filed.id);
+      result.approvalDesktopAnswered = resolved && resolved.status === 'answered' && resolved.decision === 'allow';
+      result.approvalClearedFromPending = api.getPendingApprovals(root).length === 0;
+      // Here → the hook engages nothing, so the normal desktop prompt handles it.
+      const gated = runPerm({ tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: root }, { VERQURY_DATA_ROOT: root });
+      await dom("window.verqury.setPresence('here')");
+      await wait(100);
+      const gatedHere = runPerm({ tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: root });
+      result.permHookGatesWhenHere = gated.engage === true && gatedHere.engage === false && gatedHere.reason === 'here';
+    } else {
+      result.permHookSkipped = 'packaged run — hooks/ not bundled; proven in dev + live';
+    }
+
     // (10) embedded terminal — multi-session tabs (ADR-0010). Opening the view gives
     // a default shell tab; prove independent per-tab sessions, project-pinned reuse,
     // isolation between tabs, persistence across navigation, and close.
@@ -654,6 +834,8 @@ app.whenReady().then(() => {
   setupTray();
   setupHotkey();
   setInterval(pollClipboard, 1000); // clipboard-watch poll (no-op unless enabled)
+  syncRelay(); // start the Telegram long-poll if the relay is configured (ADR-0011 Phase B)
+  setInterval(reconcileApprovals, 30000); // periodic sweep: expiry nudges + missed events
 
   const verifyDir = process.env.VERQURY_VERIFY;
   if (verifyDir) win.webContents.once('did-finish-load', () => setTimeout(() => runVerify(verifyDir), 800));

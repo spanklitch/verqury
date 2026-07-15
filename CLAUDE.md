@@ -116,6 +116,23 @@ root/core/app. README hero + Packaging; CHANGELOG [0.1.0]; eng-notes §4. 47 tes
 in this sandbox (app-builder-bin dropped); Gary runs `npm run dist -w app` on a real host,
 verifies, then tags v0.1.0. Verqury is feature-complete.**
 
+### 2026-07-15 — Remote decision relay: Phase B (built)
+Approve-by-tap — the interactive gate (plan §8 Phase B, ADR-0011). Core `approvals.js` = third
+file-backed inbox (`<root>/approvals/`, **global**; named `approvals` NOT `decisions` — the latter
+is the per-project ADR log `memory/decisions`): create/get/list/pending/answer(allow|deny, atomic +
+timeline echo)/expire + `approval` CLI. **Blocking** `PermissionRequest` hook `hooks/verqury-permission.cjs`
+(dependency-free): HERE/disabled → emit nothing (native prompt); AWAY+configured → file a pending record,
+poll it, **self-expire at 9 min → emit nothing (desk fallback)**; on tap emit `decision.behavior` allow/deny.
+App is the **single Telegram consumer** (`app/src/telegram.js`, getUpdates long-poll): sends the inline
+[✅ Approve][⛔ Deny] card, writes the verdict back, T=7min nudge; new **Approvals tab** + pending badge.
+**Contract corrected vs. this ADR's assumption (verified against live docs):** `PermissionRequest` =
+`decision.behavior` **allow/deny only, no `ask`**; 600 s timeout **fails open** → the 9-min self-expire is
+load-bearing; "ask" = emit nothing. `init()` now creates `approvals/` so the watcher sees the first pending.
+61 tests + lint + VERQURY_VERIFY **block 12** (7/7 in the running app: filed→inbox card→badge→desktop
+answer→cleared→gates-when-Here) green. Gotchas (single-consumer getUpdates, `Atomics.wait` sync sleep,
+chokidar-watch-a-dir-that-must-exist, hook⇄core cross-reader) in eng-notes §7. **Handoff:** live phone
+round-trip needs Gary's bot+phone (like Phase A). No push, no AppImage yet. 0.4.0→0.5.0. Phase C next.
+
 ### 2026-07-14 — Remote decision relay: Phase A (built)
 Here/Away + outbound Telegram notify (plan §8 Phase A, ADR-0011). Core `notify.js`
 (config.json: presence/enabled/telegram.chatId, email inert) + `notify` CLI. Standalone
