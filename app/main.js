@@ -5,7 +5,7 @@ import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, clipboard, shell,
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -216,6 +216,21 @@ function setupIpc() {
   ipcMain.handle('adapter:remove', (_e, slug) => api.removeAdapter(root, slug));
   ipcMain.handle('adapter:launch', (_e, adapterSlug, projectSlug) => launchAdapter(adapterSlug, projectSlug));
 
+  // Remote decision relay (ADR-0011, Phase A): presence + Telegram config. All
+  // mutations return the enriched state (incl. tokenSet/hookInstalled) so the
+  // renderer never drops that status when toggling presence or enable.
+  ipcMain.handle('notify:get', () => notifyState());
+  ipcMain.handle('notify:setPresence', (_e, presence) => {
+    api.changePresence(root, presence);
+    if (tray) tray.setContextMenu(buildTrayMenu());
+    return notifyState();
+  });
+  ipcMain.handle('notify:update', (_e, patch) => {
+    api.updateNotifyConfig(root, patch);
+    return notifyState();
+  });
+  ipcMain.handle('notify:setToken', (_e, token) => api.setTelegramToken(token));
+
   ipcMain.handle('pty:start', (_e, id, opts) => ptyStart(id, opts));
   ipcMain.on('pty:input', (_e, id, data) => { const p = ptys.get(id); if (p) p.write(data); });
   ipcMain.on('pty:resize', (_e, id, cols, rows) => { const p = ptys.get(id); if (p) { try { p.resize(cols, rows); } catch { /* size race */ } } });
@@ -226,6 +241,25 @@ function setupIpc() {
   });
   ipcMain.handle('clipboard:watch', (_e, on) => { setClipboardWatch(Boolean(on)); return clipboardWatch; });
   ipcMain.handle('clipboard:watching', () => clipboardWatch);
+}
+
+// Read-only check: is the Phase-A Notification hook installed + registered? The
+// app never rewrites ~/.claude/settings.json (surgical; that's a one-time setup);
+// it just reports status so the Settings UI can guide the owner.
+function notifyHookInstalled() {
+  const script = path.join(os.homedir(), '.claude', 'hooks', 'verqury-notify.cjs');
+  if (!fs.existsSync(script)) return false;
+  try {
+    const settings = fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf8');
+    return settings.includes('verqury-notify');
+  } catch {
+    return false;
+  }
+}
+
+// Enriched notify state for the renderer: core config + secret/hook status.
+function notifyState() {
+  return { ...api.getNotifyConfig(root), hookInstalled: notifyHookInstalled() };
 }
 
 function notify(body) {
@@ -313,6 +347,19 @@ function buildTrayMenu() {
       click: (item) => {
         setAutostart(item.checked);
         if (tray) tray.setContextMenu(buildTrayMenu());
+      },
+    },
+    { type: 'separator' },
+    {
+      // Remote relay presence (ADR-0011): flip to Away as you leave the desk and
+      // pending build decisions ping your phone instead of the local terminal bell.
+      label: 'Away (notify my phone)',
+      type: 'checkbox',
+      checked: api.getNotifyConfig(root).presence === 'away',
+      click: (item) => {
+        api.changePresence(root, item.checked ? 'away' : 'here');
+        if (tray) tray.setContextMenu(buildTrayMenu());
+        if (win && !win.isDestroyed()) win.webContents.send('notify:changed');
       },
     },
     { type: 'separator' },
@@ -495,6 +542,51 @@ async function runVerify(outDir) {
     await wait(500);
     result.adapterLaunched = fs.existsSync(sentinel);
     result.adapterHandoffCopied = /build context/.test(clipboard.readText());
+
+    // (11) remote decision relay — Phase A (ADR-0011). Placed BEFORE the terminal
+    // block so it never depends on node-pty. Prove the UI writes presence to
+    // config.json, the token round-trips to an ISOLATED .env (never ~/.claude),
+    // chat_id + enable persist, and the installed Notification hook — driven as a
+    // real subprocess — sends when Away+configured and gates when Here.
+    await dom("document.querySelector('.settings-nav-card').click()"); // open Notifications panel (still on Settings)
+    await wait(200);
+    result.notifyPanelShown = await dom("(document.querySelector('.detail-title')?.textContent||'').includes('Notifications')");
+    // Flip to Away via the segmented control (the UI path), then configure via bridge.
+    await dom("[...document.querySelectorAll('.segmented .seg')].find(b=>b.textContent.includes('Away')).click()");
+    await wait(200);
+    await dom("(async()=>{ await window.verqury.setTelegramToken('123:HARNESS-SECRET'); await window.verqury.updateNotify({ enabled: true, telegram: { chatId: '55501' } }); })()");
+    await wait(200);
+    const cfgNotify = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')).notify || {};
+    result.notifyPresenceAway = cfgNotify.presence === 'away';
+    result.notifyEnabledChat = cfgNotify.enabled === true && cfgNotify.telegram?.chatId === '55501';
+    result.notifyTokenNotInConfig = !JSON.stringify(cfgNotify).includes('HARNESS-SECRET'); // secret must NOT be in config.json
+    const envFile = api.envFilePath();
+    result.notifyTokenInEnv = fs.existsSync(envFile) && /VERQURY_TELEGRAM_BOT_TOKEN=123:HARNESS-SECRET/.test(fs.readFileSync(envFile, 'utf8'));
+    // The installed hook, run as Claude Code would run it (piped payload), Away → sends.
+    // The hook script ships to ~/.claude/hooks, not inside the app bundle, so in a
+    // PACKAGED run (asar-less resources dir) the repo copy isn't co-located — skip the
+    // subprocess checks there (they are proven in dev + the live phone test).
+    const hookPath = path.join(dir, '..', 'hooks', 'verqury-notify.cjs');
+    if (fs.existsSync(hookPath)) {
+      const runHook = (payload) => JSON.parse(execFileSync(process.execPath, [hookPath], {
+        input: JSON.stringify(payload),
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VERQURY_NOTIFY_DRYRUN: '1', VERQURY_DATA_ROOT: root, VERQURY_ENV_FILE: envFile },
+        encoding: 'utf8',
+      }).trim());
+      const away = runHook({ message: 'Claude needs your permission to run Bash', cwd: root, session_id: 'abcd1234ef' });
+      result.hookSendsWhenAway = away.send === true && away.reason === 'needs-you' && away.tokenPresent === true;
+      result.hookTextNoSecret = !JSON.stringify(away).includes('HARNESS-SECRET'); // dry-run output must never carry the token
+      // Flip Here → the same hook gates (this is what protects an unattended agent).
+      await dom("window.verqury.setPresence('here')");
+      await wait(150);
+      const here = runHook({ message: 'Claude needs your permission to run Bash', cwd: root });
+      result.hookGatesWhenHere = here.send === false && here.reason === 'here';
+    } else {
+      result.hookChecksSkipped = 'packaged run — hooks/ not bundled; hook proven in dev + live';
+    }
+    await dom("document.querySelector('.settings-nav-card').click()"); // re-render → token status reflects
+    await wait(150);
+    result.notifyTokenStatus = await dom("[...document.querySelectorAll('.status-line')].some(s=>/saved to/.test(s.textContent))");
 
     // (10) embedded terminal — multi-session tabs (ADR-0010). Opening the view gives
     // a default shell tab; prove independent per-tab sessions, project-pinned reuse,

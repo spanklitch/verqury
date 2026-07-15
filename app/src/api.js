@@ -8,6 +8,9 @@
 // the packaged app uses Electron's own embedded node (ADR-0008).
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   resolveRoot,
   init,
@@ -42,6 +45,9 @@ import {
   deleteTask as coreDeleteTask,
   renderHandoff as coreRenderHandoff,
   attachReport as coreAttachReport,
+  getNotify,
+  setPresence as coreSetPresence,
+  updateNotify as coreUpdateNotify,
   listAdapters,
   getAdapter,
   addAdapter,
@@ -243,6 +249,75 @@ export function removeAdapter(root, slug) {
 
 export function resolveAdapterCommand(command, project) {
   return resolveCommand(command, project);
+}
+
+// ---- Remote decision relay (ADR-0011, Phase A) ----
+// Non-secret notify config lives in config.json (core). The Telegram bot token is
+// a SECRET and lives in ~/.claude/.env — reachable by both this app and the hook.
+// The token value is never returned to the renderer; only whether it is set.
+
+const TELEGRAM_TOKEN_KEY = 'VERQURY_TELEGRAM_BOT_TOKEN';
+
+// Overridable so tests (and the verify harness) never touch the real ~/.claude/.env.
+export function envFilePath() {
+  return process.env.VERQURY_ENV_FILE || path.join(os.homedir(), '.claude', '.env');
+}
+
+export function getNotifyConfig(root) {
+  return { ...getNotify(root), tokenSet: hasEnvVar(TELEGRAM_TOKEN_KEY) };
+}
+
+export function changePresence(root, presence) {
+  return coreSetPresence(root, presence);
+}
+
+export function updateNotifyConfig(root, patch) {
+  return coreUpdateNotify(root, patch);
+}
+
+// Save the Telegram bot token to ~/.claude/.env (the "save to .env?" convention),
+// updating the key in place if present. File is created 0600. Never logged.
+export function setTelegramToken(token) {
+  saveEnvVar(TELEGRAM_TOKEN_KEY, token);
+  return { tokenSet: hasEnvVar(TELEGRAM_TOKEN_KEY) };
+}
+
+export function hasEnvVar(key) {
+  return Boolean(readEnvVar(key));
+}
+
+function readEnvVar(key) {
+  try {
+    const txt = fs.readFileSync(envFilePath(), 'utf8');
+    for (const line of txt.split('\n')) {
+      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/);
+      if (m && m[1] === key) return m[2].replace(/^['"]|['"]$/g, '');
+    }
+  } catch {
+    /* no .env yet */
+  }
+  return '';
+}
+
+export function saveEnvVar(key, value) {
+  const file = envFilePath();
+  const line = `${key}=${String(value ?? '')}`;
+  let lines = [];
+  try {
+    lines = fs.readFileSync(file, 'utf8').split('\n');
+  } catch {
+    lines = [];
+  }
+  const idx = lines.findIndex((l) => new RegExp(`^\\s*${key}\\s*=`).test(l));
+  if (idx === -1) {
+    // drop a trailing empty line if present, append, keep one trailing newline
+    if (lines.length && lines[lines.length - 1] === '') lines.pop();
+    lines.push(line);
+  } else {
+    lines[idx] = line;
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, lines.join('\n').replace(/\n*$/, '\n'), { mode: 0o600 });
 }
 
 // The clipboard-capture path, shared by the global hotkey. `readClipboard` is

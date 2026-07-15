@@ -293,3 +293,57 @@ criteria and a PROGRESS.md update.
 3. Default capture hotkey preference.
 
 (Resolved: name = **Verqury**, tagline "Layer, not IDE" — 2026-07-06.)
+
+## 8. Remote decision relay — approve builds from the phone (initiative, post-0.3)
+
+Planned 2026-07-14. Rationale, alternatives, and the full reasoning live in **ADR-0011**;
+this section is the phase spec. Goal: trigger a multi-step build in the morning and keep it
+moving from the day job — *notified on the phone when a running Claude Code build needs a
+decision or finishes, and able to answer the common approvals with a tap*. Verqury stays a
+**relay** (agent raises its hand → human decides → Verqury carries it both ways); it never
+auto-answers. Claude Code only at first (hooks/skills are Claude features); the ADR-0010
+bell/pty path is the universal floor for other CLIs. Detection uses Claude Code's `Notification`
+/ `PermissionRequest` hooks + a `verqury-ask` skill — **no terminal scraping, no keystroke
+injection**. Everything file-mediated; the **Decision Inbox** is a third file-backed inbox
+beside artifacts (P4) and tasks (P6). Secrets → `~/.claude/.env`, non-secrets → `config.json`.
+Phases are A→C; **native iOS companion app (D) is shelved**, not planned.
+
+**Rulings (Gary, 2026-07-14):** expire → `ask` (graceful fall-back to the desktop prompt, not
+`deny`); Phase A ships **Telegram-only**, email deferred to C.
+
+### Phase A — Here/Away + config UI + outbound notify (small-medium; lowest risk, no blocking)
+- Desktop **Here/Away toggle**; state written to `config.json` (HERE = ADR-0010 bell/tab;
+  AWAY = notify the phone).
+- **Config/setup section on the existing Settings tab:** enable notifications, Telegram
+  setup (bot token → `~/.claude/.env` via the "save to .env?" pattern; `chat_id`), Here/Away
+  control. Email fields may appear but stay inert until Phase C.
+- **`Notification` hook** (`~/.claude/hooks`): reads Here/Away; when AWAY, sends a Telegram
+  message on `agent_needs_input` ("session X needs you") and `agent_completed` ("task done").
+  Non-blocking — nothing waits, nothing can auto-approve.
+- **Done when:** with Away set, a real Claude Code permission prompt produces a Telegram
+  message on the phone within seconds, and `agent_completed` produces a "done" ping; token
+  is read from `~/.claude/.env` and never logged.
+
+### Phase B — the remote tap: interactive approval gate (medium; the fail-safe phase)
+- **`PermissionRequest` blocking hook:** AWAY → write a **Decision Inbox** record →
+  Telegram card with inline `[Approve][Deny]` (callback carries the decision id) → poll the
+  record → return `permissionDecision`.
+- **Verqury long-polls Telegram** (no inbound port), writes the tapped answer into the record.
+- **Self-timed lifecycle inside the 600 s ceiling:** `T=0` notify → `T=7min` "expiring in
+  2 min" reminder → `T=9min` expire → return **`ask`** (fall back to the desktop prompt).
+  The 1-min margin must beat the harness's auto-PROCEED-on-timeout.
+- Decision Inbox record is markdown; answers auto-log into the project timeline (as P6 does).
+- **Done when:** Away, a pending commit → Telegram tap `Approve` runs it / `Deny` blocks it;
+  no answer within 9 min parks the decision at the desk via `ask`; multiple concurrent tabs
+  stay unambiguous via the `#id` in each card.
+
+### Phase C — rich decisions: Skill + email long-form (medium)
+- **`verqury-ask` Skill** for the agent's *own* clarifying questions: write a Decision Inbox
+  record `{kind, summary, options, body}` → poll for the answer → return it to the model.
+- **Escalating email read channel:** when a decision body is long (or flagged needs-context),
+  also send an email carrying the full context; the Telegram card degrades to "context in
+  email `#a7`, respond here." Email is powerless (context only, no actionable link).
+- **Correlation ids** (`#a7`) join the email and the Telegram card; typed answers map back via
+  Telegram reply-to-message. Gmail SMTP app-password → `~/.claude/.env`.
+- **Done when:** a long-form decision emails the full context, the matching `#id` Telegram
+  card resolves it by tap or typed reply, and the answer returns to the paused agent.

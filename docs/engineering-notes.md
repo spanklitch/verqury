@@ -187,3 +187,55 @@ makes `createWindow(false)` start the app in the tray without showing a window.
 - Verqury MVP holds no credentials: no API keys, no tokens, no accounts (ADR-0004).
 - The user data root (`~/FlawedWorks/verqury/` by default) lives outside the repo and
   is never committed; `.sqlite` and `.env` are gitignored defensively.
+- **Telegram bot token (remote relay, Phase A)** is the first secret Verqury handles.
+  It lives in `~/.claude/.env` under `VERQURY_TELEGRAM_BOT_TOKEN` — reachable by both the
+  Electron app and the standalone hook, outside the repo (ADR-0011). The app writes it via
+  `saveEnvVar` (0600, key updated in place) and **never returns the value to the renderer** —
+  only a `tokenSet` boolean. Non-secrets (presence, `chat_id`, enable) go in the data-root
+  `config.json`. `VERQURY_ENV_FILE` overrides the path so tests/harness never touch the real
+  `~/.claude/.env`.
+
+## 6. Remote decision relay hook (Phase A, ADR-0011)
+
+- **The hook is `.cjs`, not `.js`.** It installs to `~/.claude/hooks/` where there is no
+  `package.json`; an ESM `.js` there triggers Node's `MODULE_TYPELESS_PACKAGE_JSON` warning
+  on stderr and a reparse on **every** notification. CommonJS (`.cjs`) is unambiguous and
+  silent. It is also **dependency-free** (node builtins only) and does **not** import
+  verqury-core — so it stays fast, and works even when the app is closed. It reads
+  `config.json` + `.env` straight off disk.
+- **Non-blocking contract.** The `Notification` hook is side-effects only. The script wraps
+  everything in try/catch, swallows network errors, and always exits 0 — a broken relay must
+  never break the agent. The pending HTTPS request keeps the event loop alive until it
+  completes (8 s timeout); no `process.exit`.
+- **Completion is fuzzy.** Per the current hooks docs, `Notification` reliably means "Claude
+  wants you" (permission/idle prompts fire it); task *completion* is not a guaranteed
+  top-level event (`agent_completed` is documented as "likely for subagents"; the real
+  turn-end signal is the separate, far noisier `Stop` hook). So the "done" ping rides the
+  same catch-all Notification hook and is classified by a message-text heuristic
+  (`/complet|finished|done/i`); its top-level reliability needs a live session to confirm.
+- **`VERQURY_NOTIFY_DRYRUN`** makes the hook print its send decision (token as a boolean
+  only) instead of hitting the network — this is how the harness (block 11) proves the whole
+  chain: UI → `config.json` + isolated `.env` → hook sends when Away / gates when Here, with
+  the secret never appearing in config or dry-run output.
+- **Enriched IPC returns.** `notify:setPresence` / `notify:update` return the *enriched*
+  state (`tokenSet`/`hookInstalled`), not the bare core config, so the renderer's
+  `state.notify` never loses that status when toggling; `showNotifyPanel` also refetches on
+  open (token/hook status can change out from under it).
+- **The app never rewrites `~/.claude/settings.json`.** Registration is a one-time install
+  (see `hooks/README.md`); the app only *reads* whether the hook is installed, to show status.
+- **The `Notification` hook is FOCUS-GATED (verified live 2026-07-14).** It is a *separate*
+  event from the permission dialog — a tool approval fires `PermissionRequest`; the
+  `Notification` hook fires only when Claude Code decides to *surface* a notification, and it
+  does that only when the **terminal is unfocused** (`idle_prompt` re-fires ~60 s while
+  backgrounded and waiting; permission notifications surface when you're not looking).
+  Consequence: you **cannot** test Phase A by sitting focused on a fresh terminal and approving
+  quickly — Claude Code stays silent by design, and the ping never fires. The real away-scenario
+  (terminal backgrounded because you left the desk) *does* fire it. Confirmed by triggering a
+  real approval in an unfocused terminal → the phone buzzed "Claude Code needs your permission ·
+  <cwd> · #<sid>", with the captured payload `message: "Claude needs your permission"`. The
+  deterministic, focus-independent per-prompt catch is Phase B's blocking `PermissionRequest`
+  hook — this is *why* the plan splits them. (Refs: code.claude.com/docs/en/hooks-guide;
+  anthropics/claude-code issues #8320, #12048.)
+- **Optional live diagnostic:** set `VERQURY_NOTIFY_DEBUG=1` on the hook command in
+  `settings.json` to append each invocation (raw payload, gate state, decision — never the
+  token) to `~/.claude/verqury-notify.log`. Off by default; how we captured the payload above.

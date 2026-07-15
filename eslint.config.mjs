@@ -1,6 +1,7 @@
 const node = {
   console: 'readonly',
   process: 'readonly',
+  Buffer: 'readonly',
   URL: 'readonly',
   setTimeout: 'readonly',
   clearTimeout: 'readonly',
@@ -32,9 +33,9 @@ export default [
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'commonjs',
-      globals: { require: 'readonly', module: 'writable' },
+      globals: { require: 'readonly', module: 'writable', process: 'readonly', Buffer: 'readonly', console: 'readonly' },
     },
-    rules: { 'no-undef': 'error' },
+    rules: { 'no-undef': 'error', 'no-unused-vars': 'warn' },
   },
   {
     // Browser renderer (ES modules)

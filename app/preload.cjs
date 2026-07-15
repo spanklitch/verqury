@@ -53,6 +53,12 @@ contextBridge.exposeInMainWorld('verqury', {
   resumeReminders: () => ipcRenderer.invoke('resume:list'),
   onAppShown: (cb) => ipcRenderer.on('app:shown', () => cb()),
 
+  getNotify: () => ipcRenderer.invoke('notify:get'),
+  setPresence: (presence) => ipcRenderer.invoke('notify:setPresence', presence),
+  updateNotify: (patch) => ipcRenderer.invoke('notify:update', patch),
+  setTelegramToken: (token) => ipcRenderer.invoke('notify:setToken', token),
+  onNotifyChanged: (cb) => ipcRenderer.on('notify:changed', () => cb()),
+
   listAdapters: () => ipcRenderer.invoke('adapters:list'),
   addAdapter: (adapter) => ipcRenderer.invoke('adapter:add', adapter),
   updateAdapter: (slug, patch) => ipcRenderer.invoke('adapter:update', slug, patch),

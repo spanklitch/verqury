@@ -15,6 +15,7 @@ import * as artifacts from './artifacts.js';
 import * as packets from './packets.js';
 import * as tasks from './tasks.js';
 import * as adapters from './adapters.js';
+import * as notify from './notify.js';
 import * as search from './search.js';
 
 const OPTIONS = {
@@ -61,6 +62,7 @@ Usage: verqury <command> [args] [--data-root <dir>]
   artifact list [--project s] [--kind k] [--json]
   active [<project>]                   Get or set the project new captures file into
   adapter list                         Configured AI surfaces (launch/handoff)
+  notify [here|away|enable|disable|chat-id <id>]   Remote-relay presence + Telegram (ADR-0011)
   packet list
   packet render <packet> <project>     Render a bootstrap packet [--out file] [--log N]
   task add <project> <title...>        [--route r] [--surface s] [--resume] (or --body -)
@@ -375,6 +377,36 @@ function main() {
         return;
       }
       return fail(`unknown task subcommand: ${sub ?? '(none)'}`);
+    }
+
+    case 'notify': {
+      // Remote-relay presence + Telegram config (ADR-0011). The bot token is a
+      // secret and is NOT handled here — it lives in ~/.claude/.env.
+      if (!sub) {
+        const n = notify.getNotify(root);
+        console.log(`presence: ${n.presence}`);
+        console.log(`enabled:  ${n.enabled}`);
+        console.log(`chat_id:  ${n.telegram.chatId || '(unset)'}`);
+        return;
+      }
+      if (sub === 'here' || sub === 'away') {
+        notify.setPresence(root, sub);
+        console.log(`presence: ${sub}`);
+        return;
+      }
+      if (sub === 'enable' || sub === 'disable') {
+        notify.updateNotify(root, { enabled: sub === 'enable' });
+        console.log(`enabled: ${sub === 'enable'}`);
+        return;
+      }
+      if (sub === 'chat-id') {
+        const id = positionals[2];
+        if (!id) fail('notify chat-id needs a <chat_id>');
+        notify.updateNotify(root, { telegram: { chatId: id } });
+        console.log(`chat_id: ${id}`);
+        return;
+      }
+      return fail(`unknown notify subcommand: ${sub}`);
     }
 
     case 'adapter': {

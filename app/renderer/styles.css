@@ -288,6 +288,24 @@ body {
 .launch-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 18px; }
 .launch-row .btn { padding: 5px 11px; font-size: 12.5px; }
 
+/* Notifications & remote relay (ADR-0011) */
+.settings-nav-card { padding: 9px 11px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; margin-bottom: 6px; }
+.settings-nav-card:hover { background: var(--panel-2); }
+.settings-nav-card.active { background: var(--panel-2); border-color: var(--line); }
+.settings-nav-card .name { font-weight: 550; }
+.segmented { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; width: fit-content; }
+.segmented .seg { padding: 7px 16px; background: var(--panel); color: var(--ink-soft); border: none; cursor: pointer; font-size: 13px; }
+.segmented .seg:hover { background: var(--panel-2); }
+.segmented .seg.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.segmented .seg.on.away { background: #d0a536; color: #1a1626; }
+.form label.check { flex-direction: row; align-items: center; gap: 8px; }
+.form label.check input { width: auto; }
+.field-hint { font-size: 11.5px; color: var(--ink-soft); margin-top: -4px; }
+.status-line { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-soft); }
+.status-line .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.status-line .dot.ok { background: #36b37e; }
+.status-line .dot.off { background: color-mix(in srgb, var(--ink-soft) 45%, transparent); }
+
 /* Toast */
 .toast {
   position: fixed;

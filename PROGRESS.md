@@ -15,6 +15,10 @@ verify success criteria, update this file.
 - [x] **Phase 6 — Task router** (2026-07-07)
 - [x] **Phase 7 — Adapter registry + launch** (2026-07-07)
 - [x] **Phase 8 — Packaging, docs, release prep** (2026-07-08 — AppImage built + verified running; only v0.1.0 tag + push remain)
+- [x] **Remote decision relay — Phase A** (2026-07-14 — Here/Away + Telegram notify hook; code+harness verified, live phone test pending Gary)
+- [ ] **Remote decision relay — Phase B** (planned; plan §8) — next up
+
+- [ ] **Remote decision relay — Phase C** (planned; plan §8)
 
 ## Open questions (plan §7)
 
@@ -448,3 +452,55 @@ memory" rule): it fires `idle_prompt`/`permission_prompt` but only desktop-notif
 Ghostty/Kitty/iTerm2, so the embedded xterm needs `preferredNotifChannel terminal_bell` — the
 BEL our `onBell` catches. Harness gained terminalBellAttention + terminalBellCleared (both
 true via a test-only `ringBellForTest` hook that writes BEL exactly as pty:data would).
+
+### 2026-07-14 — Remote decision relay: Phase A (build session, Opus)
+**Shipped:** "See a build's prompts on your phone." Core `notify.js`: non-secret relay
+config in `config.json` (`notify: {presence here|away, enabled, telegram.chatId, email{…inert}}`),
+`getNotify`/`setPresence`/`updateNotify`; `notify [here|away|enable|disable|chat-id]` CLI.
+**Hook** `hooks/verqury-notify.cjs` (installed to `~/.claude/hooks/`): a **non-blocking**
+Claude Code `Notification` hook — when AWAY+enabled it POSTs the notification to Telegram;
+zero-dep, reads `config.json` + `~/.claude/.env` off disk, never logs the token, always exits 0.
+App: Settings **"Notifications & remote relay"** panel (Here/Away segmented control, enable,
+chat_id, bot-token→`~/.claude/.env` via the save-to-.env convention, token/hook status lines;
+email fields inert/"Phase C") + a tray **"Away (notify my phone)"** checkbox. `saveEnvVar`/
+`hasEnvVar` in api.js (0600, path overridable via `VERQURY_ENV_FILE`; value never returned to
+the renderer). Docs verified against current hooks docs first (not memory): Notification input
+shape + that completion is fuzzy (see below). Registered the hook as a **second** Notification
+entry in `~/.claude/settings.json` (preserving the existing bell + skill-check hooks; backup saved).
+
+**Verified:**
+- 54 tests green (40 core incl. 3 notify: defaults/no-secret, presence round-trip, deep-merge;
+  14 app incl. 2: token→isolated-.env 0600 + value-never-returned, notify config merge) + lint clean.
+- Hook proven headlessly via dry-run across all four gates (Here→disabled, Away-no-token→no-token,
+  Away+configured+permission→needs-you, +completion→done).
+- VERQURY_VERIFY harness (new **block 11**, placed before the terminal block so it never depends
+  on node-pty; isolated `VERQURY_ENV_FILE` so the real `~/.claude/.env` is untouched) — all 9
+  Phase-A checks green in the running app: notifyPanelShown, notifyPresenceAway (UI segmented
+  control → config.json), notifyEnabledChat, **notifyTokenNotInConfig** + **notifyTokenInEnv**
+  (secret in .env, never config.json), **hookSendsWhenAway** + **hookGatesWhenHere** (installed
+  hook run as a real subprocess), **hookTextNoSecret**, notifyTokenStatus. Full P2–P10 regression
+  green; only `hotkeyRegistered` false (the known live-desktop Ctrl+Alt+C grab, unrelated).
+
+**Bug caught + fixed via the harness:** `notify:setPresence`/`update` IPC returned the bare core
+config, so the renderer dropped `tokenSet`/`hookInstalled` on any toggle → made all three notify
+mutations return the enriched state and made `showNotifyPanel` always refetch. Gotchas
+(`.cjs`-not-`.js` for the no-package.json install dir; completion fuzziness; non-blocking
+contract) in engineering-notes §6; secret handling in §5.
+
+**Not done (deliberate / the one true handoff):** the final done-when — a real permission prompt
+buzzing Gary's **actual phone** — needs his BotFather token + chat_id + phone (mirrors Phase 8's
+AppImage: build everything, human does the live verification). Everything up to the network POST
+is proven. **No git push** (awaits Gary). Phase B (interactive approve-by-tap gate) is next.
+
+### 2026-07-14 — Planning session: remote decision relay (no code)
+Designed, with Gary, a way to monitor/answer running Claude Code builds from his phone while
+away from the desk (trigger a build in the morning, keep it moving from the day job, while
+still making the approvals himself — that's how he's learning). Verqury stays a **relay**, not
+an orchestrator. Verified Claude Code's hook capabilities against the current docs
+(code.claude.com/docs/en/hooks) rather than memory: `PermissionRequest`/`PreToolUse` block up
+to **600 s** and return `allow`/`deny`/`ask`, but **auto-PROCEED on timeout** — so the gate
+hook must self-time (7-min reminder / 9-min expire→`ask`, 1-min margin under the ceiling). The
+`Notification` hook fires `agent_needs_input`/`agent_completed` for the outbound pings.
+Captured as **ADR-0011** (full reasoning + alternatives, incl. the shelved native iOS app) and
+**plan §8** (Phases A→C). **Rulings:** expire→`ask`; Phase A is Telegram-only (email→C).
+Secrets → `~/.claude/.env`, non-secrets → `config.json`. **Phase A is the next build session.**

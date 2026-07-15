@@ -25,8 +25,10 @@ const state = {
   artifacts: [],
   tasks: [],
   adapters: [],
+  notify: null, // remote-relay config { presence, enabled, telegram, tokenSet, hookInstalled }
   activeProject: null, // selected project in the projects view
   activeAdapter: null, // selected adapter slug in settings
+  settingsView: 'notify', // which settings pane is open: 'notify' | 'adapter'
   activeGuidance: null, // { scope, slug }
   activeArtifact: null, // { project, id }
   activeTask: null, // { project, id }
@@ -612,7 +614,15 @@ function renderProjectDetail(project, timeline) {
 /* ---------- settings: adapter registry ---------- */
 
 function renderSettingsList() {
-  listEl.replaceChildren(h('button', { class: 'btn wide', onclick: () => showAdapterForm(null) }, '＋ New adapter'));
+  const away = state.notify?.presence === 'away';
+  listEl.replaceChildren(
+    h('div', { class: `settings-nav-card${state.activeAdapter === null && state.settingsView === 'notify' ? ' active' : ''}`, onclick: () => showNotifyPanel() },
+      h('div', { class: 'name', text: '🔔 Notifications & remote relay' }),
+      h('div', { class: 'card-meta' },
+        h('span', { class: `badge ${away ? 'kind' : ''}`, text: away ? 'Away' : 'Here' }),
+        state.notify?.enabled ? h('span', { class: 'badge', text: 'on' }) : null)),
+  );
+  listEl.append(h('button', { class: 'btn wide', onclick: () => showAdapterForm(null) }, '＋ New adapter'));
   listEl.append(h('div', { class: 'section-label', text: 'AI surfaces' }));
   for (const a of state.adapters) {
     const active = state.activeAdapter === a.slug;
@@ -628,6 +638,7 @@ function renderSettingsList() {
 
 async function showAdapterForm(slug) {
   state.activeAdapter = slug;
+  state.settingsView = 'adapter';
   renderSettingsList();
   const existing = slug ? state.adapters.find((a) => a.slug === slug) : null;
   const packets = await window.verqury.listPackets();
@@ -690,6 +701,76 @@ async function showAdapterForm(slug) {
 async function refreshAdapters() {
   state.adapters = await window.verqury.listAdapters();
   if (state.mode === 'settings') renderSettingsList();
+}
+
+/* ---------- settings: notifications & remote decision relay (ADR-0011) ---------- */
+
+async function refreshNotify() {
+  state.notify = await window.verqury.getNotify();
+  if (state.mode === 'settings') renderSettingsList();
+}
+
+async function showNotifyPanel() {
+  state.activeAdapter = null;
+  state.settingsView = 'notify';
+  state.notify = await window.verqury.getNotify(); // always fresh: token/hook status can change
+  renderSettingsList();
+  const n = state.notify;
+
+  // Here/Away — the router. Away = pending decisions ping the phone (ADR-0010 → phone).
+  const setPresence = async (p) => {
+    state.notify = await window.verqury.setPresence(p);
+    showNotifyPanel();
+  };
+  const seg = h('div', { class: 'segmented' },
+    h('button', { class: `seg${n.presence === 'here' ? ' on' : ''}`, onclick: () => setPresence('here') }, '🖥 Here'),
+    h('button', { class: `seg${n.presence === 'away' ? ' on away' : ''}`, onclick: () => setPresence('away') }, '📱 Away'));
+
+  const enabled = h('input', { type: 'checkbox' });
+  enabled.checked = Boolean(n.enabled);
+  enabled.addEventListener('change', async () => {
+    state.notify = await window.verqury.updateNotify({ enabled: enabled.checked });
+    renderSettingsList();
+  });
+
+  const chatIdInput = h('input', { type: 'text', placeholder: 'Telegram chat_id — e.g. 123456789' });
+  chatIdInput.value = n.telegram?.chatId ?? '';
+  const tokenInput = h('input', { type: 'password', placeholder: n.tokenSet ? '•••••••• (saved — leave blank to keep)' : 'Bot token from @BotFather' });
+
+  const saveTelegram = h('button', { class: 'btn primary', onclick: async () => {
+    try {
+      if (tokenInput.value.trim()) {
+        await window.verqury.setTelegramToken(tokenInput.value.trim());
+        tokenInput.value = '';
+      }
+      await window.verqury.updateNotify({ telegram: { chatId: chatIdInput.value.trim() } });
+      state.notify = await window.verqury.getNotify();
+      toast('Saved');
+      showNotifyPanel();
+    } catch (err) { toast(err.message); }
+  } }, 'Save Telegram');
+
+  const statusRow = (ok, on, off) => h('div', { class: 'status-line' },
+    h('span', { class: `dot ${ok ? 'ok' : 'off'}` }), h('span', { text: ok ? on : off }));
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: 'Notifications & remote relay' })),
+    h('div', { class: 'detail-sub', text: 'Approve builds from your phone. Flip to Away as you leave; when Claude Code needs a decision it pings Telegram. Verqury is a relay — it carries the message, you decide (ADR-0011). Phase A: see the ping. Approve-by-tap arrives in Phase B.' }),
+    h('div', { class: 'form' },
+      h('label', {}, 'Presence', seg),
+      h('label', { class: 'check' }, enabled, h('span', { text: 'Enable phone notifications when Away' })),
+      h('div', { class: 'section-label', text: 'Telegram' }),
+      h('label', {}, 'chat_id', chatIdInput),
+      h('label', {}, 'Bot token', tokenInput),
+      h('div', { class: 'field-hint', text: 'Token is saved to ~/.claude/.env (never the repo, never shown back). chat_id is saved to config.json.' }),
+      h('div', { class: 'detail-actions' }, saveTelegram),
+      statusRow(n.tokenSet, 'Bot token saved to ~/.claude/.env', 'Bot token not set'),
+      statusRow(n.hookInstalled, 'Notification hook installed in ~/.claude', 'Notification hook not installed — see hooks/README.md'),
+      h('div', { class: 'section-label', text: 'Email (Phase C — inert)' }),
+      h('label', {}, 'To', h('input', { type: 'text', disabled: 'true', placeholder: 'Coming in Phase C' })),
+      h('div', { class: 'field-hint', text: 'Long-form email context for complex decisions ships in Phase C. Fields are inert for now.' }),
+    ),
+  );
 }
 
 function showNewProjectForm() {
@@ -933,7 +1014,7 @@ function setMode(mode) {
     mountTerminal(detailEl);
   } else {
     renderSettingsList();
-    detailEl.replaceChildren(h('div', { class: 'empty', text: 'Select or add an adapter (an AI surface).' }));
+    showNotifyPanel();
   }
 }
 
@@ -976,6 +1057,7 @@ async function init() {
   state.artifacts = await window.verqury.listArtifacts({});
   state.tasks = await window.verqury.listTasks({});
   state.adapters = await window.verqury.listAdapters();
+  state.notify = await window.verqury.getNotify();
   state.captureTarget = (await window.verqury.getActiveProject()) || (state.projects[0]?.slug ?? null);
   renderProjectList();
   if (state.projects.length) await selectProject(state.projects[0].slug);
@@ -984,6 +1066,7 @@ async function init() {
     setMode('inbox');
     refreshInbox().then(() => info && selectArtifact(info.project, info.id));
   });
+  window.verqury.onNotifyChanged(() => refreshNotify()); // tray Away toggle → refresh
   await renderResumeStrip(); // greet with pending reminders on first open
   window.verqury.onAppShown(() => renderResumeStrip()); // and each foregrounding
   window.__verquryReady = true; // signal for headless verification

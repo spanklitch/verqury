@@ -115,3 +115,35 @@ root/core/app. README hero + Packaging; CHANGELOG [0.1.0]; eng-notes §4. 47 tes
 27-check harness regression green. **AppImage build NOT run — electron-builder can't complete
 in this sandbox (app-builder-bin dropped); Gary runs `npm run dist -w app` on a real host,
 verifies, then tags v0.1.0. Verqury is feature-complete.**
+
+### 2026-07-14 — Remote decision relay: Phase A (built)
+Here/Away + outbound Telegram notify (plan §8 Phase A, ADR-0011). Core `notify.js`
+(config.json: presence/enabled/telegram.chatId, email inert) + `notify` CLI. Standalone
+**non-blocking** Claude Code `Notification` hook `hooks/verqury-notify.cjs` → installed to
+`~/.claude/hooks/`, registered as a 2nd Notification entry (bell + skill-check preserved,
+backup saved). AWAY+enabled → POSTs the notification to Telegram; zero-dep, reads config.json
++ `~/.claude/.env` off disk, token never logged, always exits 0. App: Settings "Notifications
+& remote relay" panel + tray "Away" checkbox; `saveEnvVar`/`hasEnvVar` (0600, `VERQURY_ENV_FILE`
+override, value never returned to renderer). **Verified against current hooks docs first**
+(Notification input shape; completion is fuzzy — "done" ping rides the catch-all Notification
+hook, top-level reliability TBD live). 54 tests + lint + harness block 11 (9/9, isolated .env)
+green; fixed an enriched-IPC-return bug the harness caught. **`.cjs` not `.js`** so the
+no-package.json install dir doesn't warn (eng-notes §6). Anti-goal intact: relay, not
+orchestrator — it shows the prompt, Gary decides. **Handoff:** live phone test needs Gary's
+BotFather token + chat_id (like Phase 8's AppImage). No push yet. Phase B (approve-by-tap) next.
+
+### 2026-07-14 — Planning: remote decision relay (ADR-0011, plan §8) — no code
+Designed the "approve builds from the phone" initiative with Gary. Goal: trigger a multi-step
+Claude Code build in the morning and keep it moving from the day job — pinged on the phone when
+it needs a decision or finishes, answering the common approvals with a tap — while still making
+the approvals himself (his learning loop). Verqury stays a **relay** (agent raises its hand →
+human decides → Verqury carries it), never auto-answers → §1 anti-goal intact. Detection uses
+Claude Code's `Notification` + `PermissionRequest` hooks and a `verqury-ask` skill — **no
+terminal scraping, no keystroke injection**; everything file-mediated (Decision Inbox = third
+inbox beside artifacts/tasks). Telegram = fast bidirectional channel (long-poll, no inbound
+port); email = optional long-form read channel (Phase C), joined by a `#id`. Load-bearing
+gotcha verified against current hook docs (not memory): blocking hooks time out at **600 s and
+then auto-PROCEED**, so the gate self-times (T=0 notify / T=7min reminder / T=9min expire→`ask`,
+1-min safety margin). Secrets → `~/.claude/.env`, non-secrets → `config.json`. **Phases A→C in
+plan §8; native iOS app (D) shelved.** Rulings: expire→`ask`; Phase A Telegram-only. **Phase A
+is the next build session** (one-phase-per-session rule). Reasoning + alternatives in ADR-0011.
