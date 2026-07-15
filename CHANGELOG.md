@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-15
+
+### Changed
+- **One Telegram per event (relay de-dup).** With both the Phase A notify hook and the
+  Phase B approve-by-tap gate installed, a permission prompt used to send two messages — a
+  plain *"needs your permission"* notification **and** the actionable Approve/Deny card. The
+  `Notification` hook (`hooks/verqury-notify.cjs`) now stays **silent on permission prompts**
+  (the `PermissionRequest` gate owns those) and fires only for the events the gate does not:
+  build **done** and **idle / waiting for input**. Re-copy the hook to `~/.claude/hooks/` after
+  updating.
+
 ## [0.5.0] - 2026-07-15
 
 ### Added

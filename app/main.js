@@ -706,13 +706,17 @@ async function runVerify(outDir) {
         env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VERQURY_NOTIFY_DRYRUN: '1', VERQURY_DATA_ROOT: root, VERQURY_ENV_FILE: envFile },
         encoding: 'utf8',
       }).trim());
-      const away = runHook({ message: 'Claude needs your permission to run Bash', cwd: root, session_id: 'abcd1234ef' });
-      result.hookSendsWhenAway = away.send === true && away.reason === 'needs-you' && away.tokenPresent === true;
+      // Post-Phase-B division of labour: the notify hook sends for completion/idle...
+      const away = runHook({ message: 'Task complete — build finished', cwd: root, session_id: 'abcd1234ef' });
+      result.hookSendsWhenAway = away.send === true && away.reason === 'done' && away.tokenPresent === true;
       result.hookTextNoSecret = !JSON.stringify(away).includes('HARNESS-SECRET'); // dry-run output must never carry the token
-      // Flip Here → the same hook gates (this is what protects an unattended agent).
+      // ...but stays SILENT on permission prompts — the Phase B gate owns those (no double-ping).
+      const perm = runHook({ message: 'Claude needs your permission to run Bash', cwd: root });
+      result.hookSuppressesPermission = perm.send === false && perm.reason === 'permission-handled-by-gate';
+      // Flip Here → the hook gates entirely (this is what protects an unattended agent).
       await dom("window.verqury.setPresence('here')");
       await wait(150);
-      const here = runHook({ message: 'Claude needs your permission to run Bash', cwd: root });
+      const here = runHook({ message: 'Task complete — build finished', cwd: root });
       result.hookGatesWhenHere = here.send === false && here.reason === 'here';
     } else {
       result.hookChecksSkipped = 'packaged run — hooks/ not bundled; hook proven in dev + live';
