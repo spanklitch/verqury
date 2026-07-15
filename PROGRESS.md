@@ -16,7 +16,7 @@ verify success criteria, update this file.
 - [x] **Phase 7 — Adapter registry + launch** (2026-07-07)
 - [x] **Phase 8 — Packaging, docs, release prep** (2026-07-08 — AppImage built + verified running; only v0.1.0 tag + push remain)
 - [x] **Remote decision relay — Phase A** (2026-07-14 — Here/Away + Telegram notify hook; code+harness verified, live phone verified)
-- [x] **Remote decision relay — Phase B** (2026-07-15 — approve-by-tap: PermissionRequest gate + Approval inbox + app Telegram round-trip; 61 tests + harness verified, live phone test pending Gary)
+- [x] **Remote decision relay — Phase B** (2026-07-15 — approve-by-tap: PermissionRequest gate + Approval inbox + app Telegram round-trip; **LIVE-PHONE-VERIFIED**; shipped v0.5.0, then **v0.5.1** relay de-dup; 0.5.1 AppImage built + launcher repointed + hooks installed/registered)
 - [ ] **Remote decision relay — Phase C** (planned; plan §8) — next up
 
 ## Open questions (plan §7)
@@ -525,9 +525,29 @@ must-exist, hook⇄core cross-reader contract, atomic answer write) in engineeri
   packetHasContext/packetFileWritten — false only because the test used a minimal one-project seed lacking
   their rich content; not regressions.)
 
-**Not done (deliberate handoff):** the live phone round-trip (tap Approve on the real phone → build proceeds)
-needs Gary's bot + phone, like Phase A. Everything up to the Telegram network I/O is proven. **No git push /
-no AppImage build** (awaits Gary). Version bumped 0.4.0 → 0.5.0. Phase C (verqury-ask skill + email long-form) is next.
+**SHIPPED + LIVE-VERIFIED (same session):** pushed v0.5.0 (merged main 193ce31, tag v0.5.0). Then ran the
+**live phone test** — launched the Phase B app (Away), fired a real permission request through the actual hook:
+card hit Gary's phone → **he tapped Approve (~20 s later)** → hook returned `decision.behavior:"allow"` → the
+answer echoed into the verqury project timeline. Full round-trip proven on real hardware. (20 s gap = a human
+tap, not an auto-answer — nothing in the code auto-answers.)
+
+### 2026-07-15 — v0.5.1: relay de-dup + go-live (release session, Opus 4.8)
+Gary noticed **two Telegrams per permission event** — the Phase A `Notification` hook's plain "needs permission"
+text AND the Phase B Approve/Deny card. Fix: `hooks/verqury-notify.cjs` now **suppresses permission messages**
+(`/permission/i` → `send:false, reason:'permission-handled-by-gate'`); the notify hook keeps only the events the
+gate doesn't own — completion ("done") + idle/waiting. **One event, one Telegram.** Harness block 11 updated
+(notify sends on "done", `hookSuppressesPermission` on permission, gates when Here) — all relay checks green in
+dev + packaged. Version 0.4.0→0.5.0→**0.5.1**; CHANGELOG [0.5.1]; eng-notes note.
+
+**Go-live (all done this session):** built the **0.5.1 AppImage + .deb** (clean build after an `app-builder
+CANNOT_EXECUTE` from a concurrent-kill during a first attempt — restored via `npm install` + a single clean
+foreground build; validated the packaged AppImage headlessly, 51 checks). **Repointed the launcher**
+(`~/Applications/Verqury.AppImage` 0.3.0→0.5.1 via install-desktop.sh). **Installed both hooks** to
+`~/.claude/hooks/` and **registered the `PermissionRequest` hook** in `~/.claude/settings.json` (safe merge,
+backup saved, timeout 600). Presence left at **Here** so live sessions aren't relayed until Gary flips Away.
+Pushed v0.5.1 (merged main deac123, tag v0.5.1) + a package-lock version sync (ee8cb58). **Caution captured:**
+the gate is now armed for ALL Claude Code sessions — Away blocks each prompt until a tap or the ~9-min desk
+fallback. Phase C (verqury-ask skill + email long-form) is next.
 
 ### 2026-07-14 — Planning session: remote decision relay (no code)
 Designed, with Gary, a way to monitor/answer running Claude Code builds from his phone while

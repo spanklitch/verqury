@@ -130,8 +130,23 @@ App is the **single Telegram consumer** (`app/src/telegram.js`, getUpdates long-
 load-bearing; "ask" = emit nothing. `init()` now creates `approvals/` so the watcher sees the first pending.
 61 tests + lint + VERQURY_VERIFY **block 12** (7/7 in the running app: filed→inbox card→badge→desktop
 answer→cleared→gates-when-Here) green. Gotchas (single-consumer getUpdates, `Atomics.wait` sync sleep,
-chokidar-watch-a-dir-that-must-exist, hook⇄core cross-reader) in eng-notes §7. **Handoff:** live phone
-round-trip needs Gary's bot+phone (like Phase A). No push, no AppImage yet. 0.4.0→0.5.0. Phase C next.
+chokidar-watch-a-dir-that-must-exist, hook⇄core cross-reader) in eng-notes §7. **SHIPPED v0.5.0** (merged
+main 193ce31, tag v0.5.0) **+ LIVE-PHONE-VERIFIED**: real permission request → card on Gary's phone → tapped
+Approve (~20 s) → hook returned `decision.behavior:"allow"` → timeline echo. Then v0.5.1 (below). Phase C next.
+
+### 2026-07-15 — v0.5.1: relay de-dup + go-live
+Gary saw **two Telegrams per permission event** (Phase A notify's "needs permission" text + Phase B's
+Approve/Deny card). Fix: `hooks/verqury-notify.cjs` now **stays silent on permission messages** (`/permission/i`
+→ `send:false`, reason `permission-handled-by-gate`) — the `PermissionRequest` gate owns permission; the notify
+hook keeps only completion ("done") + idle/waiting. **One event → one Telegram.** Harness block 11 updated
+(`hookSuppressesPermission`). 0.5.0→**0.5.1**; CHANGELOG [0.5.1]. **Went live:** built **0.5.1 AppImage + .deb**
+(clean rebuild after a concurrent-kill `app-builder CANNOT_EXECUTE` — `npm install` restores app-builder-bin, then
+ONE clean foreground `npm run dist`; validated packaged headlessly), **repointed launcher** 0.3.0→0.5.1
+(`~/Applications/Verqury.AppImage` via install-desktop.sh), **installed both hooks** to `~/.claude/hooks/` +
+**registered `PermissionRequest`** in `~/.claude/settings.json` (safe merge, backup, timeout 600). Pushed
+(merged main deac123, tag v0.5.1; lockfile version-sync ee8cb58). **Left presence=Here** so live sessions aren't
+relayed until Gary flips Away. **CAUTION:** the gate now fires for ALL Claude Code sessions — Away blocks each
+prompt until a tap or the ~9-min desk fallback (that's the design; flip Here/Away deliberately).
 
 ### 2026-07-14 — Remote decision relay: Phase A (built)
 Here/Away + outbound Telegram notify (plan §8 Phase A, ADR-0011). Core `notify.js`
