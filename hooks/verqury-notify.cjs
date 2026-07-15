@@ -80,8 +80,13 @@ function buildNotification(payload, cfg, token) {
   if (!chatId) return { send: false, reason: 'no-chat-id' };
 
   const message = String(payload.message || '');
-  // Best-effort classify: the Notification hook reliably means "Claude wants you";
-  // completion is fuzzier (see ADR-0011), so lean on the message text.
+  // De-dup with Phase B (ADR-0011): a permission request ALSO fires the blocking
+  // `PermissionRequest` hook, which relays an actionable Approve/Deny card. So when
+  // this Notification is a permission prompt, stay silent — the gate owns it, and a
+  // single permission ask should produce exactly ONE Telegram, not two. This hook
+  // now covers only the events the gate does not: completion ("done") and idle waits.
+  if (/permission/i.test(message)) return { send: false, reason: 'permission-handled-by-gate' };
+  // Best-effort classify: completion is fuzzier (see ADR-0011), so lean on the text.
   const done = /complet|finished|\bdone\b/i.test(message);
   const header = done ? '✅ Claude Code — done' : '🔔 Claude Code needs you';
   const cwd = payload.cwd ? path.basename(String(payload.cwd)) : '';
