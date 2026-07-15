@@ -17,3 +17,6 @@ out/
 # Noise
 *.log
 .DS_Store
+
+# Orchestrator working state — local only (may contain personal IDs)
+SESSION_STATE.md

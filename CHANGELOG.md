@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-07-12
+## [0.4.0] - 2026-07-14
+
+### Added
+- **Remote decision relay — Phase A** ([ADR-0011](docs/adr/0011-remote-decision-relay.md),
+  build plan §8): see a running Claude Code build's prompts on your phone. A desktop
+  **Here / Away** toggle (Settings → Notifications, and a tray checkbox) routes attention:
+  **Here** keeps the local terminal bell; **Away** forwards Claude Code notifications
+  (needs-permission / waiting / done) to **Telegram**. A non-blocking Claude Code
+  `Notification` hook (`hooks/verqury-notify.cjs`, installed to `~/.claude/hooks/`) does
+  the send — it never influences the agent, always exits 0, and reads the bot token from
+  `~/.claude/.env` (never logged). Settings section for enable, `chat_id`, and the bot
+  token (saved to `~/.claude/.env` via the "save to .env?" convention); email fields are
+  present but inert until Phase C. Verqury stays a **relay** — it carries the message, you
+  still make the call. Approve-by-tap arrives in Phase B. CLI: `verqury notify
+  [here|away|enable|disable|chat-id <id>]`.
 
 ### Added
 - **Resume reminders** ("where you left off"): flag any task with **Remind me on
@@ -147,7 +161,8 @@ and a config-driven adapter registry.
 - Renamed product Velora → **Verqury** (prior name in use by another company);
   applies to package names, CLI command, data root, and all docs.
 
-[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/spanklitch/verqury/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/spanklitch/verqury/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/spanklitch/verqury/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/spanklitch/verqury/compare/v0.1.1...v0.1.2
