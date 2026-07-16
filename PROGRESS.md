@@ -17,7 +17,7 @@ verify success criteria, update this file.
 - [x] **Phase 8 — Packaging, docs, release prep** (2026-07-08 — AppImage built + verified running; only v0.1.0 tag + push remain)
 - [x] **Remote decision relay — Phase A** (2026-07-14 — Here/Away + Telegram notify hook; code+harness verified, live phone verified)
 - [x] **Remote decision relay — Phase B** (2026-07-15 — approve-by-tap: PermissionRequest gate + Approval inbox + app Telegram round-trip; **LIVE-PHONE-VERIFIED**; shipped v0.5.0, then **v0.5.1** relay de-dup; 0.5.1 AppImage built + launcher repointed + hooks installed/registered)
-- [x] **Remote decision relay — Phase C** (2026-07-15 — `verqury-ask` skill + question inbox + escalating email context + typed-reply channel; 70 tests + lint + harness block 13 green; **relay initiative complete**. Go-live: install skill + Gmail app-password + live phone/email verify + 0.6.0 build)
+- [x] **Remote decision relay — Phase C** (2026-07-15 — `verqury-ask` skill + question inbox + escalating email context + typed-reply channel; 70 tests + lint + harness block 13 green; **SHIPPED v0.6.0 + LIVE-PHONE+EMAIL-VERIFIED**. Relay initiative COMPLETE (A→C).)
 
 ## Open questions (plan §7)
 
@@ -581,10 +581,37 @@ message_id` maps typed replies; Gmail needs a 16-char App Password over 465(TLS)
 since May 2025. nodemailer adds **zero** subdeps (the audit `high`s trace to node-gyp/make-fetch-happen from
 node-pty/better-sqlite3, pre-existing). Gotchas in eng-notes **§8**; ADR-0011 Phase-C amendment written.
 
-**Not done (deliberate / the human-gated handoff — like Phase A/B's live test):** install `skills/verqury-ask/` →
-`~/.claude/skills/`; save the Gmail app-password; the **live phone reply + email test**; build the **0.6.0 AppImage**
-+ repoint the launcher; **git push** (all await Gary). Presence flipped to **Here** at the start of this session so
-the armed gate didn't relay the build's own prompts — flip back to Away deliberately.
+### 2026-07-15 — Phase C GO-LIVE: shipped v0.6.0 + live phone/email verified (same session, Opus 4.8)
+All human-gated steps completed with Gary, in a plain Terminal (no bootstrap trap):
+- **Installed** `skills/verqury-ask/` → `~/.claude/skills/` (hot-loaded). **Built the 0.6.0 AppImage + .deb**,
+  repointed `~/Applications/Verqury.AppImage` (byte-identical to the build); packaged boot verified.
+- **Email = personal Gmail** (`[redacted]`), App Password → `~/.claude/.env` `VERQURY_SMTP_PASSWORD`.
+  We first chased **gary@flawedworks.com**: found flawedworks.com DNS is on **Cloudflare** but MX = **ImprovMX**
+  (forward-only); ImprovMX **SMTP sending is Premium-only ($9/mo)** with no DKIM on Free — so sending *as* the
+  flawedworks alias needs either that upgrade or a Gmail "Send mail as" alias. Gary chose to **drop the alias** and
+  use his Gmail directly (From=To=login → zero mailer change). Direct SMTP send test → email arrived.
+- **Live results (real phone, single 0.6.0 app):** Test A **option tap** → "Apple" (5.2s, question path, decision
+  null); Test B **typed reply** → "Next Thursday" (84s, mapped via `reply_to_message`); Test C **timeout → desk
+  fallback** (never auto-answered); Test D **long question → email + `#code` reply** → "Yes. Received" (99s,
+  emailedAt stamped, timeline echo). Relay round-trip proven end to end.
+- **Shipped:** branch `phase-c-relay` → merged `--no-ff` to main (**c7f3db0**), tag **v0.6.0** pushed. Security
+  pass clean (`.env`/`dist`/binaries gitignored; real chat_id lives only in untracked `.claude/settings.local.json`;
+  the one `HARNESS-SECRET` is the pre-existing fake fixture).
+
+**Gotchas caught live (→ eng-notes candidates):**
+- **Stale-app trap:** an OLD 0.5.1 AppImage was still running from earlier and, being pre-Phase-C, treated a
+  *question* as a permission — wrote `decision: allow` on it — while a 2nd (new) instance also polled → **two
+  Telegram consumers racing**. Fix: kill ALL Verqury, launch exactly one current build. Always confirm the running
+  binary == the freshly built one (compare process start-time vs build mtime; `cmp` launcher vs dist).
+- **Self-relay noise:** running the live test *from a Claude Code session while Away* means this session's OWN
+  permission prompts relay to the phone, mixed with the test cards (~24 stray permission records). Mitigation:
+  fire the question, then run NO Bash until the background runner returns; the `#code` plain-message answer path is
+  the robust one (independent of reply-linking); flip **Here** when done. Cleaned the 28 session-test records after.
+- **Powerless-email UX:** a card saying "check your EMAIL, then REPLY here" invites replying to the *email* (dead
+  end) — keep the card's answer instruction Telegram-only.
+
+Presence left at **Here** (relay armed but not relaying live sessions until Gary flips Away). Remaining optional:
+GitHub Release with the 0.6.0 binaries; flawedworks.com/verqury page. **The remote decision relay (A→C) is done.**
 
 ### 2026-07-14 — Planning session: remote decision relay (no code)
 Designed, with Gary, a way to monitor/answer running Claude Code builds from his phone while

@@ -310,3 +310,31 @@ makes `createWindow(false)` start the app in the tray without showing a window.
   `#code` in the text. Only messages from the configured `chat_id` are honoured. The nodemailer
   `high severity` audit lines come from the pre-existing `node-gyp`/`make-fetch-happen` native-build
   toolchain (node-pty, better-sqlite3), **not** nodemailer — it added no subdependencies.
+
+### Phase C go-live — operational gotchas (caught during live phone verification, 2026-07-15)
+
+- **Run exactly ONE current Verqury, and confirm the binary is the fresh build.** During go-live
+  a stale **0.5.1** AppImage was still running from earlier in the day. Being pre-Phase-C, it
+  treated a `question` record as a permission and wrote `decision: allow` onto it (no question
+  path); worse, a second (new) instance was also polling, so **two processes long-polled Telegram
+  at once** — the single-consumer violation ADR-0011 warns about — and updates were split between
+  them. Symptoms: answers that don't map, `decision: allow` on a question. Fix: `pkill -f
+  Verqury.AppImage` (all of them), launch one, and verify it's the intended build — compare the
+  process start time to the AppImage mtime, and `cmp -s ~/Applications/Verqury.AppImage
+  app/dist/Verqury-<ver>.AppImage`. (Electron's single-instance lock does NOT protect you here
+  because the stale one already held it.)
+- **Testing the relay from a Claude Code session while Away relays THAT session's own prompts.**
+  The gate fires for every Claude Code session, so running the live test from one (Away) means
+  this session's own permission-gated Bash calls buzz the phone as Approve/Deny cards, interleaved
+  with the test question cards (~24 stray permission records accrued in one sitting). Mitigations:
+  after filing a test question, run NO further tool calls until the background runner returns (so
+  the only new card is the test); prefer the **`#code` plain-message** answer path (independent of
+  reply-linking, unambiguous when the chat is busy); flip **Here** as soon as testing ends; and
+  delete the session-test inbox records afterward.
+- **Powerless email + card wording.** The context email is intentionally a dead-end (no inbound).
+  A card that says "check your EMAIL, then REPLY here" tempts the owner to reply to the *email* —
+  keep the card's answer instruction Telegram-only ("reply to this message" / "send `#code` …").
+- **Gmail self-send can lag / filter.** `emailedAt` is stamped only after Gmail's SMTP accepts the
+  message, so a stamped record + no error = sent; if the inbox seems empty it's Gmail delivery
+  latency or a filtered tab (Updates/Promotions/Spam), not a send failure. The card is the
+  actionable channel regardless — the owner never needs to wait for the email to answer.
