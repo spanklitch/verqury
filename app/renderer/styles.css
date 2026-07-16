@@ -189,6 +189,7 @@ body {
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .btn.wide { width: 100%; margin: 4px 0 8px; }
 .detail-actions { display: flex; gap: 8px; margin: 14px 0 4px; }
+.inline-input { flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; }
 
 .badge.kind { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); border-color: transparent; }
 

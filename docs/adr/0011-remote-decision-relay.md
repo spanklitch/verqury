@@ -1,7 +1,40 @@
 # 0011. Remote decision relay — approve builds from the phone via Here/Away + hooks
 
-- **Status:** Accepted (Phase A built 2026-07-14; **Phase B built 2026-07-15**; Phase C planned)
+- **Status:** Accepted (Phase A built 2026-07-14; Phase B built 2026-07-15; **Phase C built 2026-07-15** — relay complete)
 - **Date:** 2026-07-14 (amended 2026-07-15)
+
+## Amendment (2026-07-15) — Phase C as built (relay complete)
+
+Phase C added the agent's own clarifying-question path and the long-form email channel.
+Three points where the build refined this ADR's sketch, and one contract verified against
+current docs (not memory):
+
+- **One Decision Inbox, two kinds.** Rather than a fourth inbox, the `approvals/` records
+  gained a `kind` field: `permission` (Phase B, answer ∈ allow|deny) and `question` (Phase C,
+  answer = free text). A missing `kind` reads as `permission` (Phase B records predate the
+  field). Both `answerApproval` and `answerQuestion` guard their lane. This keeps the whole
+  relay pipeline — watcher, single Telegram consumer, reconcile loop, Approvals tab — shared.
+- **The skill only writes files; the app relays** (symmetric with the Phase-B hook). The
+  `verqury-ask` skill (`skills/verqury-ask/scripts/ask.cjs`) is **dependency-free** — it files
+  a question record, polls it, and prints the owner's answer to stdout, which is what the model
+  reads. It does **not** send Telegram or email. Skill format verified against current docs
+  (code.claude.com/docs/en/skills): `SKILL.md` frontmatter (`name`/`description`, model-invokable
+  by default) + a bundled `scripts/` dir referenced via `${CLAUDE_SKILL_DIR}`; the script's
+  stdout is the return channel to the model.
+- **Email is sent from the app, via nodemailer, and is powerless.** SMTP correctness (TLS/AUTH/
+  encoding) is exactly the kind of third-party integration the owner's rules say to use a vetted
+  library for, so `nodemailer` (MIT-0, zero-dependency) lives in `app/` — never in `core` or the
+  zero-dep hooks/skills. It is triggered only for `question` records that are `needsContext` or
+  long, sent once (guarded by `emailedAt`), and carries **no actionable link** — all authority
+  stays on the one authed Telegram chat. The transport is injected so it is testable without real
+  credentials. Typed replies map to their card via Telegram `reply_to_message.message_id`, with a
+  `#code` (short id) in the text as the fallback correlation — so `getUpdates` now requests
+  `message` updates in addition to `callback_query`.
+- **Question expiry is looser than a permission's.** A permission gate self-expires at 9 min
+  because it runs inside Claude Code's 600 s fail-open hook ceiling. A `verqury-ask` question is
+  a plain script the model waits on — no such ceiling — so it uses a longer (~20 min, configurable)
+  window and, on no answer, prints an "ask at the desk" fallback for the model to act on. It still
+  never answers on the human's behalf.
 
 ## Amendment (2026-07-15) — Phase B as built
 

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-15
+
+### Added
+- **Remote decision relay — Phase C: ask questions & read long context from your phone**
+  ([ADR-0011](docs/adr/0011-remote-decision-relay.md), build plan §8) — the final phase of the
+  relay. Two additions:
+  - **`verqury-ask` skill** (`skills/verqury-ask/`) — the agent's *own* clarifying-question
+    path (distinct from the automatic permission gate). When a build hits a decision only you
+    can make — a design choice, an ambiguous spec, "approach A or B?" — the model runs the
+    skill; it files a **question** into the same Decision Inbox, relays it to your phone, and
+    **blocks until you answer**, then returns your answer to the model. You answer by **tapping
+    an option or replying with free text**. Questions share the `approvals/` inbox by `kind`
+    (`permission` | `question`); answering echoes into the project timeline. The skill runner
+    is dependency-free and file-mediated — it never injects keystrokes.
+  - **Escalating email context channel.** For a long or `--needs-context` question, Verqury
+    also **emails the full context** (Gmail SMTP via nodemailer); the Telegram card degrades to
+    *"📧 full context emailed — reply here (#code)."* Email is deliberately **powerless** — it
+    carries context only, never an actionable link — so all authority stays on the one authed
+    Telegram chat. A `#code` correlation id joins the email and the card; typed replies map back
+    via Telegram `reply_to_message`. The Gmail app-password is saved to `~/.claude/.env` (never
+    the repo, never shown back); non-secret SMTP fields live in `config.json`.
+- Settings → **Notifications & remote relay** now has a live **Email** section (To / From / SMTP
+  host / port / app-password + status). The Approvals tab renders questions with option buttons
+  and a free-text reply box. CLI: `verqury approval ask` / `approval reply`.
+
+### Changed
+- The Telegram long-poll now also receives typed **message** replies (was callback taps only),
+  and resolved cards (answered at the desk or on the phone) are closed out on the phone.
+
 ## [0.5.1] - 2026-07-15
 
 ### Changed
@@ -189,7 +218,10 @@ and a config-driven adapter registry.
 - Renamed product Velora → **Verqury** (prior name in use by another company);
   applies to package names, CLI command, data root, and all docs.
 
-[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/spanklitch/verqury/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/spanklitch/verqury/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/spanklitch/verqury/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/spanklitch/verqury/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/spanklitch/verqury/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/spanklitch/verqury/compare/v0.1.2...v0.2.0

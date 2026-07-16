@@ -46,6 +46,7 @@ import { addLog } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
 import * as telegram from './src/telegram.js';
+import { makeTransport, sendContextEmail } from './src/mailer.js';
 
 // Track text WE put on the clipboard, so clipboard-watch doesn't re-capture it.
 let selfWrite = '';
@@ -233,10 +234,13 @@ function setupIpc() {
     return notifyState();
   });
   ipcMain.handle('notify:setToken', (_e, token) => { const r = api.setTelegramToken(token); syncRelay(); return r; });
+  ipcMain.handle('notify:setSmtp', (_e, password) => { const r = api.setSmtpPassword(password); return { ...notifyState(), ...r }; });
 
-  // Approval inbox (ADR-0011, Phase B): list + desktop verdict (same core path a tap uses).
+  // Decision inbox (ADR-0011): permission verdict (Phase B) + question answer (Phase C),
+  // the same core paths a phone tap/reply drives.
   ipcMain.handle('approvals:list', (_e, filters) => api.getApprovals(root, filters));
   ipcMain.handle('approval:answer', (_e, id, decision) => api.decideApproval(root, id, decision));
+  ipcMain.handle('question:answer', (_e, id, answer) => api.answerQuestionInbox(root, id, answer));
   ipcMain.handle('approval:expire', (_e, id) => api.parkApproval(root, id));
 
   ipcMain.handle('pty:start', (_e, id, opts) => ptyStart(id, opts));
@@ -307,6 +311,7 @@ async function relayLoop(gen, token, chatId) {
       for (const u of res.result || []) {
         relayOffset = u.update_id + 1;
         if (u.callback_query) await handleCallback(u.callback_query, token, chatId);
+        else if (u.message) await handleMessage(u.message, token, chatId);
       }
     } catch {
       await new Promise((r) => setTimeout(r, 5000)); // transient network error — back off
@@ -314,15 +319,22 @@ async function relayLoop(gen, token, chatId) {
   }
 }
 
-// A tap arrived. Parse a:<id> / d:<id>, record the verdict (the hook is polling for it),
-// acknowledge the tap, and neutralize the card so it can't be double-answered.
+// A tap arrived. Permission cards carry a:<id>/d:<id> (allow/deny); question cards carry
+// q:<id>:<optIndex> (a chosen option). Record the verdict (the hook/skill is polling for
+// it), acknowledge the tap, and neutralize the card so it can't be double-answered.
 async function handleCallback(cbq, token, chatId) {
-  const m = String(cbq.data || '').match(/^([ad]):(.+)$/);
-  if (!m) return;
-  const decision = m[1] === 'a' ? 'allow' : 'deny';
-  const id = m[2];
-  const card = relayCards.get(id);
+  const data = String(cbq.data || '');
   try {
+    const q = data.match(/^q:(.+):(\d+)$/);
+    if (q) {
+      await resolveQuestionTap(q[1], Number(q[2]), cbq, token, chatId);
+      return;
+    }
+    const m = data.match(/^([ad]):(.+)$/);
+    if (!m) return;
+    const decision = m[1] === 'a' ? 'allow' : 'deny';
+    const id = m[2];
+    const card = relayCards.get(id);
     const appr = api.getApprovals(root, {}).find((a) => a.id === id);
     if (!appr || appr.status !== 'pending') {
       await telegram.answerCallbackQuery(token, cbq.id, 'Already handled');
@@ -334,10 +346,65 @@ async function handleCallback(cbq, token, chatId) {
         await telegram.editMessageText(token, chatId, messageId, `${decision === 'allow' ? '✅ Approved' : '⛔ Denied'} · ${appr.summary || appr.tool || 'permission'}`);
       }
     }
+    relayCards.delete(id);
   } catch {
     /* never throw out of the loop */
   }
+}
+
+// A question option was tapped — record it as the free-text answer (the option label).
+async function resolveQuestionTap(id, index, cbq, token, chatId) {
+  const card = relayCards.get(id);
+  const q = api.getApprovals(root, {}).find((a) => a.id === id);
+  if (!q || q.status !== 'pending' || q.kind !== 'question') {
+    await telegram.answerCallbackQuery(token, cbq.id, 'Already handled');
+    relayCards.delete(id);
+    return;
+  }
+  const answer = q.options?.[index] ?? String(index);
+  api.answerQuestionInbox(root, id, answer);
+  await telegram.answerCallbackQuery(token, cbq.id, `Recorded: ${answer}`.slice(0, 60));
+  const messageId = card?.messageId ?? cbq.message?.message_id;
+  if (messageId) await telegram.editMessageText(token, chatId, messageId, `💬 Answered · ${q.summary || 'question'}\n→ ${answer}`);
   relayCards.delete(id);
+}
+
+// A typed reply arrived (Phase C). Map it to a pending question — first by the card it
+// replies to (reply_to_message.message_id), else by a #code in the text — and record the
+// free-text answer. Only messages from the configured chat are honoured.
+async function handleMessage(msg, token, chatId) {
+  try {
+    if (String(msg.chat?.id ?? '') !== String(chatId)) return; // ignore other chats
+    const text = String(msg.text || '').trim();
+    if (!text || text.startsWith('/')) return; // ignore commands/empty
+    let id = null;
+    const replyId = msg.reply_to_message?.message_id;
+    if (replyId) {
+      for (const [aid, card] of relayCards) {
+        if (card.messageId === replyId) { id = aid; break; }
+      }
+    }
+    if (!id) {
+      const code = text.match(/#([0-9A-Za-z]{4,})/);
+      if (code) {
+        const hit = api.getApprovals(root, {}).find(
+          (a) => a.kind === 'question' && a.status === 'pending' && short(a.id).toLowerCase() === code[1].toLowerCase(),
+        );
+        if (hit) id = hit.id;
+      }
+    }
+    if (!id) return; // not a reply we recognise — stay quiet
+    const q = api.getApprovals(root, {}).find((a) => a.id === id);
+    if (!q || q.status !== 'pending' || q.kind !== 'question') return;
+    const answer = text.replace(/^#[0-9A-Za-z]+\s*/, '').trim() || text;
+    api.answerQuestionInbox(root, id, answer);
+    const card = relayCards.get(id);
+    if (card?.messageId) await telegram.editMessageText(token, chatId, card.messageId, `💬 Answered · ${q.summary || 'question'}\n→ ${answer}`);
+    relayCards.delete(id);
+    await telegram.sendMessage(token, chatId, `✅ Recorded your answer for #${short(id)}`);
+  } catch {
+    /* never throw out of the loop */
+  }
 }
 
 // Reconcile the phone with the inbox: send a card for each new pending approval, nudge
@@ -349,30 +416,49 @@ async function reconcileApprovals() {
   if (!enabled || !chatId || !token) return;
   reconciling = true;
   try {
+    const notify = api.getNotifyConfig(root); // full config (incl. email) for the context channel
     const all = api.getApprovals(root, {});
     const pendingIds = new Set();
     for (const a of all) {
       if (a.status === 'pending') {
         pendingIds.add(a.id);
+        // A question relays to the phone only when Away — Here = desk (it still shows in
+        // the Approvals tab and the skill polls it there). This matches the Phase A notify
+        // and Phase B gate: phone activity happens Away. (Permissions never reach here when
+        // Here — the hook only files a record when Away.) Flipping to Away sends it next sweep.
+        if (a.kind === 'question' && notify.presence !== 'away') continue;
         const card = relayCards.get(a.id);
         if (!card) {
           relayCards.set(a.id, { messageId: null, remindedAt: null }); // claim before await (no dup)
-          const res = await telegram.sendApprovalCard(token, chatId, cardText(a), a.id);
+          let emailed = false;
+          if (a.kind === 'question') emailed = await maybeEmailQuestion(a, notify);
+          const res = a.kind === 'question'
+            ? await telegram.sendQuestionCard(token, chatId, questionCardText(a, emailed), a.id, a.options || [])
+            : await telegram.sendApprovalCard(token, chatId, cardText(a), a.id);
           const messageId = res?.result?.message_id ?? null;
           if (messageId) relayCards.set(a.id, { messageId, remindedAt: null });
           else relayCards.delete(a.id); // send failed — retry next reconcile
-        } else if (card.messageId && !card.remindedAt && Date.now() - Date.parse(a.created) > REMIND_AFTER_MS) {
+        } else if (a.kind !== 'question' && card.messageId && !card.remindedAt && Date.now() - Date.parse(a.created) > REMIND_AFTER_MS) {
+          // "expiring soon" nudge is permission-only (the hook expires at 9 min; the
+          // verqury-ask skill has a longer, non-harness-bound window).
           card.remindedAt = Date.now();
           await telegram.sendMessage(token, chatId, `⏳ Expiring in ~2 min — #${short(a.id)}\n${a.summary || a.tool || 'permission'}`);
         }
       }
     }
-    // A card whose approval is no longer pending (hook expired it) → close it out.
+    // A card whose record is no longer pending (expired, or answered at the desk) →
+    // close it out so the phone reflects the resolution.
     for (const [id, card] of relayCards) {
       if (pendingIds.has(id)) continue;
       const appr = all.find((a) => a.id === id);
-      if (appr && appr.status === 'expired' && card.messageId) {
-        await telegram.editMessageText(token, chatId, card.messageId, `⏱ Expired — parked at your desk · ${appr.summary || appr.tool || 'permission'}`);
+      if (appr && card.messageId) {
+        if (appr.status === 'expired') {
+          await telegram.editMessageText(token, chatId, card.messageId, `⏱ Expired — parked at your desk · ${appr.summary || appr.tool || 'permission'}`);
+        } else if (appr.status === 'answered' && appr.kind === 'question') {
+          await telegram.editMessageText(token, chatId, card.messageId, `💬 Answered · ${appr.summary || 'question'}\n→ ${appr.answer || ''}`);
+        } else if (appr.status === 'answered') {
+          await telegram.editMessageText(token, chatId, card.messageId, `${appr.decision === 'allow' ? '✅ Approved' : '⛔ Denied'} · ${appr.summary || appr.tool || 'permission'}`);
+        }
       }
       relayCards.delete(id);
     }
@@ -390,6 +476,41 @@ function cardText(a) {
     a.summary || a.tool || 'Permission needed',
     [a.project && `📁 ${a.project}`, a.sessionId && `#${a.sessionId}`].filter(Boolean).join('  '),
   ].filter(Boolean).join('\n');
+}
+
+// Phase C question card. Options become buttons; the owner may also reply with text.
+function questionCardText(a, emailed) {
+  const lines = [`💬 Question #${short(a.id)}`, a.summary || 'A decision is needed'];
+  lines.push(a.options?.length ? 'Tap an option or reply with your answer.' : 'Reply to this message with your answer.');
+  if (emailed) lines.push('📧 Full context emailed.');
+  const meta = [a.project && `📁 ${a.project}`, a.sessionId && `#${a.sessionId}`].filter(Boolean).join('  ');
+  if (meta) lines.push(meta);
+  return lines.join('\n');
+}
+
+// preview is body.slice(0,140); a full 140 means the body was long enough to email.
+const EMAIL_BODY_THRESHOLD = 140;
+
+// Escalating context email (ADR-0011 Phase C): for a long or needs-context question,
+// email the full body ONCE (guarded by emailedAt), then let the card note it. Powerless
+// and best-effort — the Telegram card is the authority; a missing/failed email never
+// blocks the question. Returns whether an email was sent (so the card can say so).
+async function maybeEmailQuestion(a, notify) {
+  if (a.kind !== 'question' || a.emailedAt) return false;
+  const wants = a.needsContext || (a.preview && a.preview.length >= EMAIL_BODY_THRESHOLD);
+  if (!wants) return false;
+  const email = notify.email || {};
+  const password = api.readSmtpPassword();
+  if (!password || !email.from) return false; // not configured → skip email, card still sends
+  try {
+    const full = api.getApprovalById(root, a.id);
+    const transport = makeTransport(email, password);
+    await sendContextEmail(transport, email, { code: short(a.id), summary: a.summary || 'question', body: full?.body || '', project: a.project });
+    api.markQuestionEmailed(root, a.id);
+    return true;
+  } catch {
+    return false; // email is best-effort; the tap/reply channel is unaffected
+  }
 }
 
 function notify(body) {
@@ -770,6 +891,45 @@ async function runVerify(outDir) {
       result.permHookGatesWhenHere = gated.engage === true && gatedHere.engage === false && gatedHere.reason === 'here';
     } else {
       result.permHookSkipped = 'packaged run — hooks/ not bundled; proven in dev + live';
+    }
+
+    // (13) remote decision relay — Phase C (ADR-0011): the verqury-ask skill + question
+    // inbox. The live Telegram reply / email is proven on the phone + in the mailer unit
+    // test; here we prove the file-mediated spine: the skill FILES a question (kind:
+    // question, options, needs-context) → it surfaces in the same inbox → a desktop answer
+    // resolves it (the core path a tap/typed-reply drives) → the skill's POLL reads a
+    // core-written answer back (the return contract that hands the answer to the model).
+    const askScript = path.join(dir, '..', 'skills', 'verqury-ask', 'scripts', 'ask.cjs');
+    if (fs.existsSync(askScript)) {
+      const runAsk = (args, extraEnv = {}) => execFileSync(process.execPath, [askScript, ...args], {
+        input: '', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VERQURY_DATA_ROOT: root, ...extraEnv }, encoding: 'utf8',
+      }).trim();
+      // File a question (dry-run: write the record + report, skip the block).
+      const asked = JSON.parse(runAsk(
+        ['--summary', 'Approach A or B for the relay?', '--options', 'A|B', '--body', 'x'.repeat(200), '--needs-context', '--project', slug],
+        { VERQURY_ASK_DRYRUN: '1' },
+      ) || '{}');
+      const qrec = api.getApprovalById(root, asked.id);
+      result.askFiledQuestion = Boolean(qrec && qrec.kind === 'question' && qrec.needsContext === true && Array.isArray(qrec.options) && qrec.options.length === 2);
+      // It surfaces in the Approvals inbox as a waiting question (same tab as permissions).
+      await wait(600);
+      await dom("document.querySelector('.tab[data-mode=approvals]').click()");
+      await wait(250);
+      result.questionInboxCard = await dom("[...document.querySelectorAll('#list .artifact-card .preview')].some(p=>p.textContent.includes('Approach A or B'))");
+      // A desktop answer (free text / tapped option) resolves it — the core path a phone
+      // tap or typed reply drives — and clears it from pending.
+      await dom(`window.verqury.answerQuestion(${JSON.stringify(asked.id)}, 'B')`);
+      await wait(200);
+      const qResolved = api.getApprovals(root, {}).find((a) => a.id === asked.id);
+      result.questionDesktopAnswered = Boolean(qResolved && qResolved.status === 'answered' && qResolved.answer === 'B' && qResolved.kind === 'question');
+      // The skill's POLL path reads a core-written answer back (return contract): make a
+      // fresh question, answer it via core, then run the skill runner against that id.
+      const q2 = api.fileQuestion(root, { summary: 'poll round-trip?', options: ['ok'], project: slug });
+      api.answerQuestionInbox(root, q2.id, 'Ship it');
+      const polled = runAsk([], { VERQURY_ASK_ID: q2.id, VERQURY_ASK_POLL_MS: '100', VERQURY_ASK_TIMEOUT_MS: '3000' });
+      result.askPollReadsAnswer = polled === 'Ship it';
+    } else {
+      result.askChecksSkipped = 'packaged run — skills/ not bundled; proven in dev';
     }
 
     // (10) embedded terminal — multi-session tabs (ADR-0010). Opening the view gives

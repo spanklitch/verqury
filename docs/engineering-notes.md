@@ -271,3 +271,42 @@ makes `createWindow(false)` start the app in the tray without showing a window.
 - **The relay is skipped under `VERQURY_VERIFY`** (no network in the headless harness): the harness
   proves the file-mediated spine (hook files → inbox card → tab badge → desktop verdict → cleared →
   gates when Here) via a real hook subprocess; the live Telegram round-trip is the phone test.
+
+## 8. Remote decision relay — questions & email (Phase C, ADR-0011)
+
+- **One inbox, two `kind`s.** The `approvals/` records now carry `kind` ∈ `permission` (Phase B)
+  | `question` (Phase C). A **missing** `kind` reads as `permission` — Phase B records predate the
+  field, so never assume it's present. `answerApproval` and `answerQuestion` each **guard their
+  lane** (answering a question via the permission path, or vice-versa, throws); a lane-cross bug
+  is easy to write and a unit test pins both directions.
+- **Question answer is FREE text, not a vocabulary.** A permission's `decision` is allow/deny; a
+  question's `answer` is whatever the owner tapped (an option label) or typed (a reply). They live
+  in different fields (`decision` vs `answer`) so the record shape stays uniform and unambiguous.
+- **The `verqury-ask` skill returns via stdout.** A Claude Code skill is `SKILL.md` (instructions)
+  + a bundled script the model runs; the script's **stdout is the return channel** to the model
+  (verified against code.claude.com/docs/en/skills, not memory). So `scripts/ask.cjs` files a
+  question, polls it (same `Atomics.wait` sync-sleep as the Phase-B hook), and **prints the answer**
+  — the model reads it as the Bash result. Reference the script as `${CLAUDE_SKILL_DIR}/scripts/ask.cjs`
+  so it resolves regardless of cwd, and scope `allowed-tools` to that exact command so the ask itself
+  never trips a permission prompt (which, when Away, would recursively relay).
+- **Skill cross-reader (skill ⇄ core), incl. arrays/booleans.** `ask.cjs` hand-writes the question
+  record with a flat serializer where **arrays are JSON flow sequences** (`options: ["A","B"]` — valid
+  YAML) and booleans are bare (`needsContext: true`). gray-matter parses both back; a unit test asserts
+  core reads a skill-shaped question, and `ask.cjs` reads a core-written `answer` with a quote-tolerant
+  regex. Same lock-step discipline as the Phase-B hook.
+- **Email lives in `app/`, never in `core`/hooks/skills.** SMTP correctness (implicit TLS on 465 vs
+  STARTTLS on 587, AUTH, encoding) is a vetted-library job, so `nodemailer` (MIT-0, **zero runtime
+  deps** — verified via `npm view`) is an `app/` dependency. The transport is **injected** into
+  `sendContextEmail` so it's unit-tested with a fake (no real creds). Gmail needs a 16-char **App
+  Password** (not the login; Google removed plain-password SMTP in May 2025) → `~/.claude/.env` as
+  `VERQURY_SMTP_PASSWORD` (never returned to the renderer).
+- **Email is powerless + once.** It carries context only (no link), is sent only for `needsContext`
+  or long questions, and is guarded by `emailedAt` so a reconcile sweep or app restart can't re-send.
+  The `#code` (short id) in the subject/body correlates it to the Telegram card; the answer always
+  returns via Telegram (tap or reply), never via email.
+- **Typed replies extend the single-consumer poll.** `getUpdates` now requests
+  `allowed_updates: ['callback_query', 'message']`. A typed reply maps to its question by
+  `reply_to_message.message_id` (matched against the card's stored `messageId`), falling back to a
+  `#code` in the text. Only messages from the configured `chat_id` are honoured. The nodemailer
+  `high severity` audit lines come from the pre-existing `node-gyp`/`make-fetch-happen` native-build
+  toolchain (node-pty, better-sqlite3), **not** nodemailer — it added no subdependencies.

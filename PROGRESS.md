@@ -17,7 +17,7 @@ verify success criteria, update this file.
 - [x] **Phase 8 — Packaging, docs, release prep** (2026-07-08 — AppImage built + verified running; only v0.1.0 tag + push remain)
 - [x] **Remote decision relay — Phase A** (2026-07-14 — Here/Away + Telegram notify hook; code+harness verified, live phone verified)
 - [x] **Remote decision relay — Phase B** (2026-07-15 — approve-by-tap: PermissionRequest gate + Approval inbox + app Telegram round-trip; **LIVE-PHONE-VERIFIED**; shipped v0.5.0, then **v0.5.1** relay de-dup; 0.5.1 AppImage built + launcher repointed + hooks installed/registered)
-- [ ] **Remote decision relay — Phase C** (planned; plan §8) — next up
+- [x] **Remote decision relay — Phase C** (2026-07-15 — `verqury-ask` skill + question inbox + escalating email context + typed-reply channel; 70 tests + lint + harness block 13 green; **relay initiative complete**. Go-live: install skill + Gmail app-password + live phone/email verify + 0.6.0 build)
 
 ## Open questions (plan §7)
 
@@ -548,6 +548,43 @@ backup saved, timeout 600). Presence left at **Here** so live sessions aren't re
 Pushed v0.5.1 (merged main deac123, tag v0.5.1) + a package-lock version sync (ee8cb58). **Caution captured:**
 the gate is now armed for ALL Claude Code sessions — Away blocks each prompt until a tap or the ~9-min desk
 fallback. Phase C (verqury-ask skill + email long-form) is next.
+
+### 2026-07-15 — Remote decision relay: Phase C (build session, Opus 4.8) — RELAY COMPLETE
+**Shipped:** "Ask a question / read long context from your phone." The final relay phase (plan §8, ADR-0011).
+- **Core** generalized the `approvals/` inbox to a **Decision Inbox with a `kind`** (`permission` | `question`;
+  missing = permission for Phase-B back-compat): `createQuestion`/`answerQuestion`(free text + timeline echo)/
+  `markEmailed`; both `answerApproval` and `answerQuestion` now guard their lane (a lane-cross bug the tests
+  caught). `approval ask|reply` CLI.
+- **`verqury-ask` skill** (`skills/verqury-ask/` — SKILL.md + dependency-free `scripts/ask.cjs`): the agent's OWN
+  clarifying-question path. Files a question → **blocks polling** → prints the owner's answer to stdout (the skill's
+  return channel to the model). Skill format verified against current docs (SKILL.md frontmatter + `${CLAUDE_SKILL_DIR}`
+  script; stdout = model-visible result), not memory.
+- **App:** Telegram `getUpdates` now also takes **`message`** updates → `handleMessage` resolves **typed replies**
+  (by `reply_to_message.message_id`, `#code` fallback) + `q:<id>:<i>` **option taps**; `reconcileApprovals` sends
+  question cards and, for long/`needsContext` questions, **emails the full context once** (`app/src/mailer.js`,
+  **nodemailer** MIT-0/zero-dep, injected transport) with the card degrading to "📧 context emailed #code". App-password
+  → `~/.claude/.env` (`VERQURY_SMTP_PASSWORD`). Settings email section activated; Approvals tab renders questions
+  (option buttons + free-text reply). Email is **powerless** (no link) — authority stays on the authed Telegram chat.
+
+**Verified:**
+- **70 tests green** (was 61: +6 core question/kind/cross-reader/lane-guard, +3 mailer) + lint clean.
+- `verqury-ask/scripts/ask.cjs` proven headlessly: dry-run files a question, core cross-reads it, the poll reads a
+  core-written answer back, timeout prints the desk fallback.
+- **VERQURY_VERIFY harness block 13** (isolated seeded root, relay network-skipped) — all green in the running app:
+  **askFiledQuestion, questionInboxCard, questionDesktopAnswered, askPollReadsAnswer** — plus the full P2–P12 +
+  terminal regression. (Same known falses as prior runs: `hotkeyRegistered` = the live-desktop Ctrl+Alt+C grab;
+  `markdownRendered`/`packetHasContext`/`packetFileWritten` = thin one-project seed lacking rich content — not
+  regressions; this diff touches only question/email code.)
+
+**Contract notes (verified live, not memory):** skill stdout is the model return channel; Telegram `reply_to_message.
+message_id` maps typed replies; Gmail needs a 16-char App Password over 465(TLS)/587(STARTTLS) — plain passwords gone
+since May 2025. nodemailer adds **zero** subdeps (the audit `high`s trace to node-gyp/make-fetch-happen from
+node-pty/better-sqlite3, pre-existing). Gotchas in eng-notes **§8**; ADR-0011 Phase-C amendment written.
+
+**Not done (deliberate / the human-gated handoff — like Phase A/B's live test):** install `skills/verqury-ask/` →
+`~/.claude/skills/`; save the Gmail app-password; the **live phone reply + email test**; build the **0.6.0 AppImage**
++ repoint the launcher; **git push** (all await Gary). Presence flipped to **Here** at the start of this session so
+the armed gate didn't relay the build's own prompts — flip back to Away deliberately.
 
 ### 2026-07-14 — Planning session: remote decision relay (no code)
 Designed, with Gary, a way to monitor/answer running Claude Code builds from his phone while

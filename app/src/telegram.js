@@ -50,6 +50,20 @@ export function sendApprovalCard(token, chatId, text, id) {
   });
 }
 
+// Send a clarifying-question card (ADR-0011 Phase C). Discrete options become inline
+// buttons (callback q:<id>:<index>, two per row); the owner may also reply with free
+// text. With no options it is a reply-only prompt. #code correlates it to the email.
+export function sendQuestionCard(token, chatId, text, id, options = []) {
+  const payload = { chat_id: chatId, text };
+  if (options && options.length) {
+    const buttons = options.slice(0, 8).map((opt, i) => ({ text: String(opt).slice(0, 40), callback_data: `q:${id}:${i}` }));
+    const rows = [];
+    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+    payload.reply_markup = { inline_keyboard: rows };
+  }
+  return api(token, 'sendMessage', payload);
+}
+
 export function sendMessage(token, chatId, text) {
   return api(token, 'sendMessage', { chat_id: chatId, text });
 }
@@ -64,7 +78,8 @@ export function answerCallbackQuery(token, callbackQueryId, text) {
 }
 
 // Long-poll for updates. `timeoutS` is the server-side hold; the socket timeout is a
-// few seconds beyond it. Single-consumer — only the app calls this.
+// few seconds beyond it. Single-consumer — only the app calls this. Requests both
+// callback_query (button taps, Phase B) and message (typed replies, Phase C).
 export function getUpdates(token, offset, { timeoutS = 50 } = {}) {
-  return api(token, 'getUpdates', { offset, timeout: timeoutS, allowed_updates: ['callback_query'] }, { timeoutMs: (timeoutS + 10) * 1000 });
+  return api(token, 'getUpdates', { offset, timeout: timeoutS, allowed_updates: ['callback_query', 'message'] }, { timeoutMs: (timeoutS + 10) * 1000 });
 }
