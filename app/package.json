@@ -1,6 +1,6 @@
 {
   "name": "verqury-app",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "description": "Verqury Electron shell — workflow layer over AI-assisted product development",
   "type": "module",
@@ -18,6 +18,7 @@
     "@xterm/xterm": "^6.0.0",
     "chokidar": "^5.0.0",
     "node-pty": "^1.1.0",
+    "nodemailer": "^9.0.3",
     "verqury-core": "*"
   },
   "devDependencies": {

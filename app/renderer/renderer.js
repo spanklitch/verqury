@@ -337,9 +337,12 @@ async function refreshInbox() {
 /* ---------- approvals (remote decision relay, ADR-0011 Phase B) ---------- */
 
 function approvalStatusLabel(a) {
-  if (a.status === 'answered') return a.decision === 'allow' ? '✅ approved' : '⛔ denied';
+  if (a.status === 'answered') {
+    if (a.kind === 'question') return '💬 answered';
+    return a.decision === 'allow' ? '✅ approved' : '⛔ denied';
+  }
   if (a.status === 'expired') return '⏱ parked at desk';
-  return '🔔 waiting';
+  return a.kind === 'question' ? '💬 waiting' : '🔔 waiting';
 }
 
 function renderApprovalList() {
@@ -377,11 +380,31 @@ function renderApprovalDetail(a) {
     h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: a.summary || a.tool || 'Approval' })),
     h('div', { class: 'detail-sub', text: `${approvalStatusLabel(a)} · ${a.project || 'no project'} · ${(a.created ?? '').replace('T', ' ').slice(0, 19)}` }),
   ];
-  if (a.status === 'pending') {
+  if (a.status === 'pending' && a.kind === 'question') {
+    // A clarifying question (Phase C): tap an option, or type a free-text answer.
+    const submit = async (answer) => {
+      const text = String(answer ?? '').trim();
+      if (!text) return;
+      await window.verqury.answerQuestion(a.id, text);
+      toast('Answer sent');
+      await refreshApprovals();
+    };
+    if (a.options?.length) {
+      kids.push(h('div', { class: 'detail-actions' }, ...a.options.map((opt) =>
+        h('button', { class: 'btn primary', onclick: () => submit(opt) }, opt))));
+    }
+    const input = h('input', { class: 'inline-input', type: 'text', placeholder: 'Type an answer…' });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(input.value); });
+    kids.push(h('div', { class: 'detail-actions' }, input,
+      h('button', { class: 'btn', onclick: () => submit(input.value) }, 'Send')));
+    kids.push(h('div', { class: 'detail-sub muted', text: 'Or answer from your phone — tap an option or reply to the card.' }));
+  } else if (a.status === 'pending') {
     kids.push(h('div', { class: 'detail-actions' },
       h('button', { class: 'btn primary', onclick: async () => { await window.verqury.answerApproval(a.id, 'allow'); toast('Approved'); await refreshApprovals(); } }, '✅ Approve'),
       h('button', { class: 'btn danger', onclick: async () => { await window.verqury.answerApproval(a.id, 'deny'); toast('Denied'); await refreshApprovals(); } }, '⛔ Deny')));
     kids.push(h('div', { class: 'detail-sub muted', text: 'Or tap the card on your phone. No answer in ~9 min → the build falls back to the desktop prompt.' }));
+  } else if (a.status === 'answered' && a.kind === 'question') {
+    kids.push(h('div', { class: 'detail-sub', text: `Answer: ${a.answer || ''}` }));
   }
   kids.push(body);
   detailEl.replaceChildren(...kids);
@@ -832,9 +855,37 @@ async function showNotifyPanel() {
   const statusRow = (ok, on, off) => h('div', { class: 'status-line' },
     h('span', { class: `dot ${ok ? 'ok' : 'off'}` }), h('span', { text: ok ? on : off }));
 
+  // Email (Phase C): the long-form context channel for verqury-ask questions. Non-secret
+  // fields → config.json; the Gmail app-password → ~/.claude/.env (never shown back).
+  const email = n.email || {};
+  const emailTo = h('input', { type: 'text', placeholder: 'you@gmail.com (defaults to From)' });
+  emailTo.value = email.to ?? '';
+  const emailFrom = h('input', { type: 'text', placeholder: 'you@gmail.com' });
+  emailFrom.value = email.from ?? '';
+  const smtpHost = h('input', { type: 'text', placeholder: 'smtp.gmail.com' });
+  smtpHost.value = email.smtpHost ?? '';
+  const smtpPort = h('input', { type: 'text', placeholder: '465' });
+  smtpPort.value = email.smtpPort ?? '';
+  const smtpPass = h('input', { type: 'password', placeholder: n.smtpSet ? '•••••••• (saved — leave blank to keep)' : 'Gmail app-password (16 chars)' });
+  const saveEmail = h('button', { class: 'btn primary', onclick: async () => {
+    try {
+      if (smtpPass.value.trim()) {
+        await window.verqury.setSmtpPassword(smtpPass.value.trim());
+        smtpPass.value = '';
+      }
+      await window.verqury.updateNotify({ email: {
+        to: emailTo.value.trim(), from: emailFrom.value.trim(),
+        smtpHost: smtpHost.value.trim(), smtpPort: smtpPort.value.trim(),
+      } });
+      state.notify = await window.verqury.getNotify();
+      toast('Saved');
+      showNotifyPanel();
+    } catch (err) { toast(err.message); }
+  } }, 'Save Email');
+
   detailEl.replaceChildren(
     h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: 'Notifications & remote relay' })),
-    h('div', { class: 'detail-sub', text: 'Approve builds from your phone. Flip to Away as you leave; when Claude Code needs a decision it pings Telegram. Verqury is a relay — it carries the message, you decide (ADR-0011). Phase A: see the ping. Approve-by-tap arrives in Phase B.' }),
+    h('div', { class: 'detail-sub', text: 'Approve builds and answer questions from your phone. Flip to Away as you leave; when Claude Code needs a decision it pings Telegram. Verqury is a relay — it carries the message, you decide (ADR-0011). Email is an optional long-form context channel for complex questions (it never carries an actionable link — you always answer in Telegram).' }),
     h('div', { class: 'form' },
       h('label', {}, 'Presence', seg),
       h('label', { class: 'check' }, enabled, h('span', { text: 'Enable phone notifications when Away' })),
@@ -845,9 +896,15 @@ async function showNotifyPanel() {
       h('div', { class: 'detail-actions' }, saveTelegram),
       statusRow(n.tokenSet, 'Bot token saved to ~/.claude/.env', 'Bot token not set'),
       statusRow(n.hookInstalled, 'Notification hook installed in ~/.claude', 'Notification hook not installed — see hooks/README.md'),
-      h('div', { class: 'section-label', text: 'Email (Phase C — inert)' }),
-      h('label', {}, 'To', h('input', { type: 'text', disabled: 'true', placeholder: 'Coming in Phase C' })),
-      h('div', { class: 'field-hint', text: 'Long-form email context for complex decisions ships in Phase C. Fields are inert for now.' }),
+      h('div', { class: 'section-label', text: 'Email — long-form context (optional)' }),
+      h('label', {}, 'To', emailTo),
+      h('label', {}, 'From', emailFrom),
+      h('label', {}, 'SMTP host', smtpHost),
+      h('label', {}, 'SMTP port', smtpPort),
+      h('label', {}, 'App-password', smtpPass),
+      h('div', { class: 'field-hint', text: 'Gmail: host smtp.gmail.com, port 465, a 16-char App Password (not your login). The app-password is saved to ~/.claude/.env (never the repo, never shown back).' }),
+      h('div', { class: 'detail-actions' }, saveEmail),
+      statusRow(n.smtpSet, 'App-password saved to ~/.claude/.env', 'App-password not set — email context disabled'),
     ),
   );
 }

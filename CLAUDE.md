@@ -116,6 +116,25 @@ root/core/app. README hero + Packaging; CHANGELOG [0.1.0]; eng-notes §4. 47 tes
 in this sandbox (app-builder-bin dropped); Gary runs `npm run dist -w app` on a real host,
 verifies, then tags v0.1.0. Verqury is feature-complete.**
 
+### 2026-07-15 — Remote decision relay: Phase C (built) — RELAY COMPLETE
+Questions + long-form email (plan §8 Phase C, ADR-0011). Core: `approvals/` is now a Decision Inbox with a
+**`kind`** (`permission` | `question`; missing → permission, Phase-B back-compat) — `createQuestion`/`answerQuestion`
+(free-text answer + timeline echo)/`markEmailed`; **both answer fns guard their lane** (lane-cross throws; tests caught
+it). **`verqury-ask` skill** (`skills/verqury-ask/`: SKILL.md + dependency-free `scripts/ask.cjs`) = the agent's OWN
+clarifying-question path — files a question, blocks polling, **prints the answer to stdout** (a skill's stdout IS its
+return to the model; verified vs current docs, not memory). App: Telegram `getUpdates` now also takes **`message`** →
+`handleMessage` (typed replies via `reply_to_message.message_id`, `#code` fallback) + `q:<id>:<i>` option taps;
+`reconcileApprovals` sends question cards and **emails full context once** for long/`needsContext` questions
+(`app/src/mailer.js`, **nodemailer** MIT-0/zero-dep, injected transport; app-password → `~/.claude/.env`
+`VERQURY_SMTP_PASSWORD`). Email is **powerless** (no link) — authority stays on the authed Telegram chat. Settings email
+section live; Approvals tab renders questions (option buttons + free-text reply). **70 tests** (+6 core, +3 mailer) +
+lint + **harness block 13** (askFiledQuestion/questionInboxCard/questionDesktopAnswered/askPollReadsAnswer + full
+regression) green. Gotchas (kind back-compat, skill⇄core array/bool cross-reader, nodemailer-in-app-only, App Password
+465/587, powerless-once email) in eng-notes **§8**; ADR-0011 Phase-C amendment. **Handoff (human-gated, like A/B live
+test):** install skill → `~/.claude/skills/`, save Gmail app-password, live phone-reply+email test, build 0.6.0
+AppImage + repoint launcher, git push. Presence flipped **Here** during the build so the armed gate didn't relay this
+session's own prompts — flip back to Away deliberately. Phase C = the LAST relay phase; initiative complete.
+
 ### 2026-07-15 — Remote decision relay: Phase B (built)
 Approve-by-tap — the interactive gate (plan §8 Phase B, ADR-0011). Core `approvals.js` = third
 file-backed inbox (`<root>/approvals/`, **global**; named `approvals` NOT `decisions` — the latter

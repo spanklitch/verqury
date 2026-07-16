@@ -1,16 +1,22 @@
-// Remote decision relay — Approval Inbox (ADR-0011, plan §8 Phase B).
+// Remote decision relay — Decision Inbox (ADR-0011, plan §8 Phase B + C).
 // The third file-backed inbox beside artifacts (P4) and tasks (P6): each pending
-// permission request from a running Claude Code build becomes a markdown record
-// under <root>/approvals/. Stored GLOBALLY (not per-project) like packets
-// (ADR-0007) so the dependency-free PermissionRequest hook can write one without
-// resolving a project; the record carries a best-effort `project` for the timeline
-// echo. Named "approvals" to avoid colliding with the per-project architecture-
-// decision log (memory/decisions). Pure file I/O (ADR-0001) — Telegram/SQLite hold
-// no truth; the markdown record is the only source of it.
+// decision from a running Claude Code build becomes a markdown record under
+// <root>/approvals/. Two KINDS share this inbox (ADR-0011):
+//   * `permission` (Phase B) — a yes/no gate the PermissionRequest hook files; the
+//     answer is a `decision` ∈ allow|deny returned to the paused tool.
+//   * `question`   (Phase C) — the agent's OWN clarifying question, filed by the
+//     `verqury-ask` skill; carries free-form `options` + a long-form `body`, and the
+//     answer is free `answer` text (a tapped option or a typed reply) returned to the
+//     model. When the body is long or `needsContext`, the app also emails the context.
+// Stored GLOBALLY (not per-project) like packets (ADR-0007) so the dependency-free
+// writers (hook / skill) can file one without resolving a project; the record carries
+// a best-effort `project` for the timeline echo. Named "approvals" to avoid colliding
+// with the per-project architecture-decision log (memory/decisions). Pure file I/O
+// (ADR-0001) — Telegram/email/SQLite hold no truth; the markdown record is the only one.
 //
-// Lifecycle: the hook writes `pending`; the app (single Telegram owner) sends a
-// card and, on a tap, writes `answered` + the decision; the hook polls the file
-// and returns the verdict. If nobody answers, the hook expires it to the desk.
+// Lifecycle: the hook/skill writes `pending`; the app (single Telegram owner) sends a
+// card (+ email for long questions) and, on a tap/reply, writes `answered` + the
+// verdict; the hook/skill polls the file and returns it. If nobody answers, it expires.
 import fs from 'node:fs';
 import path from 'node:path';
 import { approvalsDir } from './paths.js';
@@ -20,9 +26,13 @@ import { listProjects } from './projects.js';
 import { addLog } from './memory.js';
 
 export const APPROVAL_STATUSES = ['pending', 'answered', 'expired'];
+// The two record kinds that share the inbox (ADR-0011). A missing `kind` on older
+// records means 'permission' (Phase B shipped without the field).
+export const APPROVAL_KINDS = ['permission', 'question'];
 // The two values Claude Code's PermissionRequest hook accepts (decision.behavior).
 // There is deliberately no 'ask' — an unanswered approval expires to the native
-// desktop prompt by the hook emitting NO decision (see ADR-0011).
+// desktop prompt by the hook emitting NO decision (see ADR-0011). Questions are not
+// constrained this way: their answer is free text (a tapped option or a typed reply).
 export const APPROVAL_DECISIONS = ['allow', 'deny'];
 
 function approvalFile(root, id) {
@@ -46,6 +56,7 @@ export function createApproval(root, { tool, summary, command = '', project = nu
   const id = ulid();
   const data = {
     id,
+    kind: 'permission',
     status: 'pending',
     decision: null,
     tool: tool ?? null,
@@ -58,6 +69,37 @@ export function createApproval(root, { tool, summary, command = '', project = nu
   };
   const file = path.join(dir, `${id}.md`);
   writeDocAtomic(file, data, command ? `${String(command).trim()}\n` : '');
+  return { ...data, path: file };
+}
+
+// Create a pending QUESTION (Phase C) — the agent's own clarifying question, filed
+// by the verqury-ask skill (which has its own dependency-free writer; a cross-reader
+// test keeps them in lock-step). `options` are discrete choices (rendered as Telegram
+// buttons / desktop buttons); `body` is the long-form context that gets emailed when
+// `needsContext` or the body is long. The answer is free text (see answerQuestion).
+export function createQuestion(root, { summary, options = [], body = '', project = null, needsContext = false, sessionId = null, cwd = null } = {}) {
+  const dir = approvalsDir(root);
+  fs.mkdirSync(dir, { recursive: true });
+  const id = ulid();
+  const data = {
+    id,
+    kind: 'question',
+    status: 'pending',
+    decision: null, // unused for questions; kept so the record shape is uniform
+    tool: null,
+    summary: summary ?? 'A decision is needed',
+    options: Array.isArray(options) ? options.filter((o) => String(o).trim()) : [],
+    answer: null,
+    needsContext: Boolean(needsContext),
+    emailedAt: null,
+    project: project ?? null,
+    sessionId: sessionId ?? null,
+    cwd: cwd ?? null,
+    created: new Date().toISOString(),
+    answered: null,
+  };
+  const file = path.join(dir, `${id}.md`);
+  writeDocAtomic(file, data, body ? `${String(body).trim()}\n` : '');
   return { ...data, path: file };
 }
 
@@ -78,10 +120,15 @@ export function listApprovals(root, { status } = {}) {
     if (status && data.status !== status) continue;
     out.push({
       id: data.id ?? f.replace(/\.md$/, ''),
+      kind: data.kind ?? 'permission', // pre-Phase-C records have no kind → permission
       status: data.status ?? null,
       decision: data.decision ?? null,
       tool: data.tool ?? null,
       summary: data.summary ?? null,
+      options: Array.isArray(data.options) ? data.options : [],
+      answer: data.answer ?? null,
+      needsContext: Boolean(data.needsContext),
+      emailedAt: data.emailedAt ?? null,
       project: data.project ?? null,
       sessionId: data.sessionId ?? null,
       cwd: data.cwd ?? null,
@@ -108,11 +155,47 @@ export function answerApproval(root, id, decision) {
   const file = approvalFile(root, id);
   if (!file) throw new Error(`No such approval: ${id}`);
   const { data, body } = readDoc(file);
+  if ((data.kind ?? 'permission') !== 'permission') {
+    throw new Error(`Approval ${id} is a ${data.kind}, not a permission (use answerQuestion)`);
+  }
   data.status = 'answered';
   data.decision = decision;
   data.answered = new Date().toISOString();
   writeDocAtomic(file, data, body);
   echoToTimeline(root, data, `Remote ${decision === 'allow' ? 'approved' : 'denied'}: ${data.summary ?? data.tool ?? 'permission'}`);
+  return { ...data, id: data.id ?? id, path: file };
+}
+
+// Record the owner's answer to a QUESTION (Phase C). The answer is free text — a
+// tapped option or a typed Telegram reply — so it is not constrained to a vocabulary
+// (unlike a permission's allow/deny). Stored in `answer` (leaving `decision` for the
+// permission kind); the polling verqury-ask skill reads it back and returns it to the
+// model. Echoes into the project timeline like a permission verdict does.
+export function answerQuestion(root, id, answer) {
+  const text = String(answer ?? '').trim();
+  if (!text) throw new Error('answerQuestion needs a non-empty answer');
+  const file = approvalFile(root, id);
+  if (!file) throw new Error(`No such approval: ${id}`);
+  const { data, body } = readDoc(file);
+  if ((data.kind ?? 'permission') !== 'question') {
+    throw new Error(`Approval ${id} is a ${data.kind ?? 'permission'}, not a question (use answerApproval)`);
+  }
+  data.status = 'answered';
+  data.answer = text;
+  data.answered = new Date().toISOString();
+  writeDocAtomic(file, data, body);
+  echoToTimeline(root, data, `Remote answer to "${data.summary ?? 'question'}": ${text}`.slice(0, 200));
+  return { ...data, id: data.id ?? id, body, path: file };
+}
+
+// Stamp `emailedAt` so the app's relay sends the long-form context email exactly once
+// (Phase C). Idempotence lives in the caller (it checks emailedAt before sending).
+export function markEmailed(root, id) {
+  const file = approvalFile(root, id);
+  if (!file) throw new Error(`No such approval: ${id}`);
+  const { data, body } = readDoc(file);
+  data.emailedAt = new Date().toISOString();
+  writeDocAtomic(file, data, body);
   return { ...data, id: data.id ?? id, path: file };
 }
 

@@ -38,6 +38,9 @@ const OPTIONS = {
   log: { type: 'string' },
   route: { type: 'string' },
   surface: { type: 'string' },
+  summary: { type: 'string' },
+  options: { type: 'string' },
+  'needs-context': { type: 'boolean' },
   json: { type: 'boolean' },
   all: { type: 'boolean' },
   resume: { type: 'boolean' },
@@ -64,9 +67,12 @@ Usage: verqury <command> [args] [--data-root <dir>]
   active [<project>]                   Get or set the project new captures file into
   adapter list                         Configured AI surfaces (launch/handoff)
   notify [here|away|enable|disable|chat-id <id>]   Remote-relay presence + Telegram (ADR-0011)
-  approval list [--status pending|answered|expired] [--json]   Remote approval inbox (Phase B)
-  approval answer <id> <allow|deny>    Record a verdict on a pending approval
-  approval expire <id>                 Park a pending approval at the desk
+  approval list [--status pending|answered|expired] [--json]   Remote decision inbox (Phase B/C)
+  approval answer <id> <allow|deny>    Record a verdict on a pending permission
+  approval ask --summary <s> [--options a|b|c] [--body <t>] [--project <slug>] [--needs-context]
+                                       File a clarifying question (Phase C; normally the verqury-ask skill)
+  approval reply <id> <answer...>      Record a free-text answer to a pending question
+  approval expire <id>                 Park a pending decision at the desk
   packet list
   packet render <packet> <project>     Render a bootstrap packet [--out file] [--log N]
   task add <project> <title...>        [--route r] [--surface s] [--resume] (or --body -)
@@ -420,7 +426,7 @@ function main() {
         const list = approvals.listApprovals(root, values.status ? { status: values.status } : {});
         if (values.json) return void console.log(JSON.stringify(list));
         if (!list.length) return console.log('(no approvals)');
-        for (const a of list) console.log(`${a.id}\t${a.status}\t${a.decision ?? '—'}\t${a.tool ?? '—'}\t${a.summary ?? ''}`);
+        for (const a of list) console.log(`${a.id}\t${a.kind}\t${a.status}\t${a.decision ?? a.answer ?? '—'}\t${a.summary ?? ''}`);
         return;
       }
       if (sub === 'answer') {
@@ -429,6 +435,26 @@ function main() {
         if (!id || !decision) fail('approval answer needs <id> <allow|deny>');
         const a = approvals.answerApproval(root, id, decision);
         console.log(`${a.id}: ${a.decision}`);
+        return;
+      }
+      if (sub === 'ask') {
+        if (!values.summary) fail('approval ask needs --summary <s>');
+        const q = approvals.createQuestion(root, {
+          summary: values.summary,
+          options: values.options ? values.options.split('|').map((o) => o.trim()).filter(Boolean) : [],
+          body: values.body ?? '',
+          project: values.project ?? null,
+          needsContext: Boolean(values['needs-context']),
+        });
+        console.log(values.json ? JSON.stringify(q) : `${q.id}: question filed`);
+        return;
+      }
+      if (sub === 'reply') {
+        const id = positionals[2];
+        const answer = positionals.slice(3).join(' ');
+        if (!id || !answer) fail('approval reply needs <id> <answer...>');
+        const a = approvals.answerQuestion(root, id, answer);
+        console.log(`${a.id}: ${a.answer}`);
         return;
       }
       if (sub === 'expire') {

@@ -9,6 +9,7 @@ import { approvalsDir } from '../src/paths.js';
 import {
   createApproval, getApproval, listApprovals, pendingApprovals,
   answerApproval, expireApproval, APPROVAL_DECISIONS,
+  createQuestion, answerQuestion, markEmailed, APPROVAL_KINDS,
 } from '../src/approvals.js';
 
 test('createApproval writes a pending record and lists it', () => {
@@ -97,4 +98,107 @@ test('core reads a hook-serialized record (cross-reader contract)', () => {
   // And core can answer it, which the hook would then read back.
   const answered = answerApproval(root, id, 'deny');
   assert.equal(answered.decision, 'deny');
+});
+
+/* ---- Phase C: questions (verqury-ask) share the inbox by kind ---- */
+
+test('createApproval defaults to the permission kind; missing kind reads as permission', () => {
+  const root = tmpRoot();
+  const a = createApproval(root, { tool: 'Bash', summary: 'x' });
+  assert.equal(a.kind, 'permission');
+  assert.deepEqual(APPROVAL_KINDS, ['permission', 'question']);
+  // A pre-Phase-C record with no `kind` frontmatter still reads as a permission.
+  fs.mkdirSync(approvalsDir(root), { recursive: true });
+  const id = '0OLDNOKINDRECORD01';
+  fs.writeFileSync(path.join(approvalsDir(root), `${id}.md`),
+    `---\nid: ${JSON.stringify(id)}\nstatus: "pending"\ndecision: null\ntool: "Bash"\nsummary: "old"\n---\n`);
+  assert.equal(listApprovals(root).find((x) => x.id === id).kind, 'permission');
+});
+
+test('createQuestion files a question with options + long body, answered by free text', () => {
+  const root = tmpRoot();
+  const q = createQuestion(root, {
+    summary: 'Rename module to relay?',
+    options: ['yes', 'no', 'later'],
+    body: 'A paragraph of context explaining the tradeoff.',
+    needsContext: true,
+    project: 'verqury',
+  });
+  assert.equal(q.kind, 'question');
+  assert.equal(q.status, 'pending');
+  assert.deepEqual(q.options, ['yes', 'no', 'later']);
+  assert.equal(q.needsContext, true);
+  assert.equal(q.emailedAt, null);
+  const listed = listApprovals(root, { status: 'pending' })[0];
+  assert.equal(listed.kind, 'question');
+  assert.deepEqual(listed.options, ['yes', 'no', 'later']);
+  // The answer is FREE text (a tapped option or a typed reply), not allow/deny.
+  const answered = answerQuestion(root, q.id, 'yes — go with relay');
+  assert.equal(answered.status, 'answered');
+  assert.equal(answered.answer, 'yes — go with relay');
+  assert.ok(answered.answered);
+  assert.equal(pendingApprovals(root).length, 0);
+});
+
+test('answerQuestion rejects a permission record; answerApproval rejects a question', () => {
+  const root = tmpRoot();
+  const perm = createApproval(root, { tool: 'Bash', summary: 'permission' });
+  assert.throws(() => answerQuestion(root, perm.id, 'anything'), /not a question/);
+  const q = createQuestion(root, { summary: 'a question', options: ['a', 'b'] });
+  assert.throws(() => answerApproval(root, q.id, 'allow')); // wrong lane
+  assert.throws(() => answerQuestion(root, q.id, '   '), /non-empty/); // blank answer rejected
+});
+
+test('answering a question echoes into the project timeline', () => {
+  const root = tmpRoot();
+  createProject(root, { name: 'Verqury', slug: 'verqury' });
+  const q = createQuestion(root, { summary: 'Ship it?', options: ['ship', 'hold'], project: 'verqury' });
+  answerQuestion(root, q.id, 'ship');
+  const tl = projectTimeline(root, 'verqury');
+  assert.ok(tl.some((e) => /Remote answer to "Ship it\?": ship/.test(e.title || '') || /Remote answer/.test(e.title || '')));
+});
+
+test('markEmailed stamps emailedAt once (relay sends the context email exactly once)', () => {
+  const root = tmpRoot();
+  const q = createQuestion(root, { summary: 'long one', needsContext: true, body: 'x'.repeat(300) });
+  assert.equal(listApprovals(root)[0].emailedAt, null);
+  markEmailed(root, q.id);
+  assert.ok(listApprovals(root)[0].emailedAt);
+});
+
+// The verqury-ask skill (skills/verqury-ask/scripts/ask.cjs) writes question records
+// with its own dependency-free serializer (options as a JSON flow sequence, needsContext
+// bare boolean). This proves core reads a skill-shaped record back identically and can
+// answer it — the return-path contract the polling skill then reads.
+test('core reads a skill-serialized question record (cross-reader contract)', () => {
+  const root = tmpRoot();
+  fs.mkdirSync(approvalsDir(root), { recursive: true });
+  const id = '0ASKWRITTENQUESTION';
+  const fm = [
+    'id: ' + JSON.stringify(id),
+    'kind: ' + JSON.stringify('question'),
+    'status: ' + JSON.stringify('pending'),
+    'decision: null',
+    'tool: null',
+    'summary: ' + JSON.stringify('Approach A or B?'),
+    'options: ["A","B"]',
+    'answer: null',
+    'needsContext: true',
+    'emailedAt: null',
+    'project: ' + JSON.stringify('verqury'),
+    'sessionId: null',
+    'cwd: ' + JSON.stringify('/home/x/verqury'),
+    'created: ' + JSON.stringify(new Date().toISOString()),
+    'answered: null',
+  ].join('\n');
+  fs.writeFileSync(path.join(approvalsDir(root), `${id}.md`), `---\n${fm}\n---\nLong context body here.\n`);
+  const got = getApproval(root, id);
+  assert.equal(got.kind, 'question');
+  assert.deepEqual(got.options, ['A', 'B']);
+  assert.equal(got.needsContext, true);
+  assert.match(got.body, /Long context body/);
+  // And core can answer it, which the polling skill then reads back.
+  const answered = answerQuestion(root, id, 'A');
+  assert.equal(answered.answer, 'A');
+  assert.equal(answered.status, 'answered');
 });

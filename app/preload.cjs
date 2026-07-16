@@ -57,10 +57,12 @@ contextBridge.exposeInMainWorld('verqury', {
   setPresence: (presence) => ipcRenderer.invoke('notify:setPresence', presence),
   updateNotify: (patch) => ipcRenderer.invoke('notify:update', patch),
   setTelegramToken: (token) => ipcRenderer.invoke('notify:setToken', token),
+  setSmtpPassword: (password) => ipcRenderer.invoke('notify:setSmtp', password),
   onNotifyChanged: (cb) => ipcRenderer.on('notify:changed', () => cb()),
 
   listApprovals: (filters) => ipcRenderer.invoke('approvals:list', filters),
   answerApproval: (id, decision) => ipcRenderer.invoke('approval:answer', id, decision),
+  answerQuestion: (id, answer) => ipcRenderer.invoke('question:answer', id, answer),
   expireApproval: (id) => ipcRenderer.invoke('approval:expire', id),
 
   listAdapters: () => ipcRenderer.invoke('adapters:list'),

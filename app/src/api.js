@@ -50,7 +50,11 @@ import {
   updateNotify as coreUpdateNotify,
   listApprovals,
   pendingApprovals,
+  getApproval,
   answerApproval,
+  createQuestion,
+  answerQuestion,
+  markEmailed,
   expireApproval,
   listAdapters,
   getAdapter,
@@ -268,7 +272,7 @@ export function envFilePath() {
 }
 
 export function getNotifyConfig(root) {
-  return { ...getNotify(root), tokenSet: hasEnvVar(TELEGRAM_TOKEN_KEY) };
+  return { ...getNotify(root), tokenSet: hasEnvVar(TELEGRAM_TOKEN_KEY), smtpSet: hasEnvVar('VERQURY_SMTP_PASSWORD') };
 }
 
 export function changePresence(root, presence) {
@@ -297,18 +301,47 @@ export function readTelegramToken() {
   return readEnvVar(TELEGRAM_TOKEN_KEY);
 }
 
-// ---- Approval inbox (ADR-0011, Phase B) ----
+// ---- Decision inbox (ADR-0011, Phase B permissions + Phase C questions) ----
 export function getApprovals(root, filters) {
   return listApprovals(root, filters || {});
 }
 export function getPendingApprovals(root) {
   return pendingApprovals(root);
 }
+export function getApprovalById(root, id) {
+  return getApproval(root, id); // includes the full body (for the context email)
+}
 export function decideApproval(root, id, decision) {
   return answerApproval(root, id, decision);
 }
+export function fileQuestion(root, payload) {
+  return createQuestion(root, payload);
+}
+export function answerQuestionInbox(root, id, answer) {
+  return answerQuestion(root, id, answer);
+}
+export function markQuestionEmailed(root, id) {
+  return markEmailed(root, id);
+}
 export function parkApproval(root, id) {
   return expireApproval(root, id);
+}
+
+// ---- SMTP app-password (ADR-0011, Phase C) ----
+// The Gmail app-password is a SECRET → ~/.claude/.env (like the Telegram token). The
+// value is never returned to the renderer; only whether it is set. The main process
+// reads the value to build the mail transport.
+const SMTP_PASSWORD_KEY = 'VERQURY_SMTP_PASSWORD';
+export function setSmtpPassword(password) {
+  saveEnvVar(SMTP_PASSWORD_KEY, password);
+  return { smtpSet: hasEnvVar(SMTP_PASSWORD_KEY) };
+}
+export function hasSmtpPassword() {
+  return hasEnvVar(SMTP_PASSWORD_KEY);
+}
+// MAIN-PROCESS ONLY — never wired to IPC (renderer only ever learns smtpSet:boolean).
+export function readSmtpPassword() {
+  return readEnvVar(SMTP_PASSWORD_KEY);
 }
 
 function readEnvVar(key) {
