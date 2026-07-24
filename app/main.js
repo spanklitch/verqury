@@ -177,6 +177,7 @@ function setupIpc() {
   ipcMain.handle('shell:openExternal', (_e, url) => {
     if (/^https?:\/\//.test(String(url))) shell.openExternal(url);
   });
+  ipcMain.handle('app:version', () => app.getVersion());
 
   ipcMain.handle('artifact:kinds', () => api.getArtifactKinds());
   ipcMain.handle('artifacts:list', (_e, filters) => api.getArtifacts(root, filters));
@@ -977,6 +978,18 @@ async function runVerify(outDir) {
     result.terminalTabClosed = await dom(`document.querySelectorAll('.term-tab').length===1 && ![...document.querySelectorAll('.term-tab-label')].some(t=>t.textContent.includes('${slug} · echo'))`);
     // Tab overflow check: all tabs fit within the sidebar (none spill past its right edge).
     result.tabsFitSidebar = await dom("(()=>{const sb=document.querySelector('.sidebar').getBoundingClientRect();return [...document.querySelectorAll('.tab')].every(t=>t.getBoundingClientRect().right<=sb.right+1);})()");
+
+    // (14) About & updates panel: the Settings card renders the app version + the two
+    // verqury.com deep-link buttons + external links. Asserts wiring only (no click →
+    // never spawns a browser).
+    await dom("document.querySelector('.tab[data-mode=settings]').click()");
+    await wait(150);
+    await dom("[...document.querySelectorAll('#list .settings-nav-card')].find(c=>c.textContent.includes('About & updates')).click()");
+    await wait(200);
+    result.aboutDeepLinks = await dom("(()=>{const b=[...document.querySelectorAll('.detail-actions button')].map(x=>x.textContent);return b.some(t=>t.includes('Check for updates'))&&b.some(t=>t.includes('Share an idea'));})()");
+    result.aboutVersionShown = await dom("(document.querySelector('.detail-sub')?.textContent||'').includes('Verqury v')");
+    result.aboutSiteLink = await dom("[...document.querySelectorAll('.settings-link')].some(a=>a.getAttribute('href')==='https://verqury.com')");
+
     await dom("document.querySelector('.tab[data-mode=projects]').click()"); // end on a normal view for the shot
     await wait(200);
 

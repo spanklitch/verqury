@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('verqury', {
   copyToClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   readClipboard: () => ipcRenderer.invoke('clipboard:read'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  appVersion: () => ipcRenderer.invoke('app:version'),
 
   artifactKinds: () => ipcRenderer.invoke('artifact:kinds'),
   listArtifacts: (filters) => ipcRenderer.invoke('artifacts:list', filters),

@@ -5,6 +5,7 @@
 import { renderMarkdown } from '../src/markdown.js';
 import { mountTerminal, openProjectTerminal, sendToActiveTerminal, newShellTab, ringBellForTest } from './terminal.js';
 
+const SITE_URL = 'https://verqury.com'; // the app's web companion (whats-new / ideas deep-links)
 const el = (sel) => document.querySelector(sel);
 const listEl = el('#list');
 const detailEl = el('#detail');
@@ -723,6 +724,9 @@ function renderSettingsList() {
       h('div', { class: 'card-meta' },
         h('span', { class: `badge ${away ? 'kind' : ''}`, text: away ? 'Away' : 'Here' }),
         state.notify?.enabled ? h('span', { class: 'badge', text: 'on' }) : null)),
+    h('div', { class: `settings-nav-card${state.settingsView === 'about' ? ' active' : ''}`, onclick: () => showAboutPanel() },
+      h('div', { class: 'name', text: 'ℹ️ About & updates' }),
+      h('div', { class: 'card-meta' }, h('span', { class: 'badge', text: 'web' }))),
   );
   listEl.append(h('button', { class: 'btn wide', onclick: () => showAdapterForm(null) }, '＋ New adapter'));
   listEl.append(h('div', { class: 'section-label', text: 'AI surfaces' }));
@@ -803,6 +807,31 @@ async function showAdapterForm(slug) {
 async function refreshAdapters() {
   state.adapters = await window.verqury.listAdapters();
   if (state.mode === 'settings') renderSettingsList();
+}
+
+/* ---------- settings: about & updates (web companion deep-links) ---------- */
+
+async function showAboutPanel() {
+  state.activeAdapter = null;
+  state.settingsView = 'about';
+  renderSettingsList();
+  let version = '';
+  try { version = await window.verqury.appVersion(); } catch { /* version optional */ }
+
+  const extLink = (label, url) => h('a', { href: url, class: 'settings-link',
+    onclick: (e) => { e.preventDefault(); window.verqury.openExternal(url); }, text: label });
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: 'About & updates' })),
+    h('div', { class: 'detail-sub', text: `Verqury${version ? ' v' + version : ''} — Layer, not IDE. Its web companion lives at verqury.com; these open in your browser.` }),
+    h('div', { class: 'form' },
+      h('div', { class: 'detail-actions' },
+        h('button', { class: 'btn primary', onclick: () => window.verqury.openExternal(`${SITE_URL}/whats-new/`) }, '↗ Check for updates'),
+        h('button', { class: 'btn', onclick: () => window.verqury.openExternal(`${SITE_URL}/ideas/`) }, '💡 Share an idea')),
+      h('div', { class: 'section-label', text: 'Links' }),
+      extLink('verqury.com', SITE_URL),
+      extLink('Source on GitHub', 'https://github.com/spanklitch/verqury')),
+  );
 }
 
 /* ---------- settings: notifications & remote decision relay (ADR-0011) ---------- */

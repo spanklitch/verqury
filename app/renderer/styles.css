@@ -307,6 +307,8 @@ body {
 .settings-nav-card:hover { background: var(--panel-2); }
 .settings-nav-card.active { background: var(--panel-2); border-color: var(--line); }
 .settings-nav-card .name { font-weight: 550; }
+.settings-link { display: block; color: var(--accent); padding: 4px 0; font-size: 13px; text-decoration: none; }
+.settings-link:hover { text-decoration: underline; }
 .segmented { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; width: fit-content; }
 .segmented .seg { padding: 7px 16px; background: var(--panel); color: var(--ink-soft); border: none; cursor: pointer; font-size: 13px; }
 .segmented .seg:hover { background: var(--panel-2); }

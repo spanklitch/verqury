@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Web companion deep-links** — a new **About & updates** card in Settings opens the
+  [verqury.com](https://verqury.com) web companion in your browser: **Check for updates**
+  (→ `/whats-new/`) and **Share an idea** (→ `/ideas/`), plus links to verqury.com and the
+  GitHub source. Shows the app version via a new `app:version` IPC. Closes the app↔web loop.
+  (VERQURY_VERIFY block 14 added to prove it at build time.)
+
 ## [0.6.0] - 2026-07-15
 
 ### Added
