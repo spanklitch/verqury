@@ -1004,6 +1004,45 @@ async function runVerify(outDir) {
   }
 }
 
+// Marketing capture hook (dev-only, like VERQURY_VERIFY). When VERQURY_CAPTURE points at a
+// directory, walk each major view against the (curated) data root and save a clean PNG per
+// view, then quit. Never runs in a normal launch. Regenerates the site's "See it" shots.
+async function runCapture(outDir) {
+  const shot = async (name, settle = 450) => {
+    await wait(settle);
+    const img = await win.webContents.capturePage();
+    fs.writeFileSync(path.join(outDir, `${name}.png`), img.toPNG());
+  };
+  const clickTab = (mode) => dom(`document.querySelector('.tab[data-mode=${mode}]').click()`);
+  try {
+    win.setContentSize(1440, 900);
+    await dom('window.__verquryReady');
+    await wait(700);
+    await clickTab('projects');
+    await wait(300);
+    await dom("(document.querySelector('.project-card')||{click(){}}).click()"); // open Aurora
+    await shot('projects', 650);
+    await clickTab('tasks');
+    await wait(250);
+    await dom("(document.querySelector('.task-card')||{click(){}}).click()"); // open a task's detail
+    await shot('tasks');
+    await clickTab('inbox');
+    await wait(250);
+    await dom("(document.querySelector('.artifact-card')||{click(){}}).click()"); // open an artifact
+    await shot('inbox');
+    await clickTab('guidance'); await shot('guidance');
+    await clickTab('settings');
+    await wait(250);
+    await dom("[...document.querySelectorAll('#list .settings-nav-card')].find(c=>c.textContent.includes('About & updates')).click()");
+    await shot('about');
+    await clickTab('terminal'); await shot('terminal', 1000); // best-effort: opens a live shell
+  } catch (err) {
+    fs.writeFileSync(path.join(outDir, 'capture-error.txt'), String(err && err.message));
+  } finally {
+    app.quit();
+  }
+}
+
 app.whenReady().then(() => {
   setupIpc();
   createWindow(!startHidden); // autostart launches hidden into the tray
@@ -1016,6 +1055,9 @@ app.whenReady().then(() => {
 
   const verifyDir = process.env.VERQURY_VERIFY;
   if (verifyDir) win.webContents.once('did-finish-load', () => setTimeout(() => runVerify(verifyDir), 800));
+
+  const captureDir = process.env.VERQURY_CAPTURE;
+  if (captureDir) win.webContents.once('did-finish-load', () => setTimeout(() => runCapture(captureDir), 900));
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

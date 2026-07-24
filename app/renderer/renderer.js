@@ -577,7 +577,7 @@ function renderTaskDetail(t, artifacts) {
 
   const reportLine = t.report
     ? h('div', { class: 'detail-sub', text: `report: artifact ${t.report}` })
-    : null;
+    : ''; // '' → empty text node; native replaceChildren(null) would render the string "null"
 
   detailEl.replaceChildren(
     h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: t.title })),

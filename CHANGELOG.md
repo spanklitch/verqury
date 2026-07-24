@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   GitHub source. Shows the app version via a new `app:version` IPC. Closes the app↔web loop.
   (VERQURY_VERIFY block 14 added to prove it at build time.)
 
+### Fixed
+- Task detail no longer renders a stray `null` line for tasks that have no attached report
+  (native `replaceChildren(null)` was coercing to the string "null").
+
 ## [0.6.0] - 2026-07-15
 
 ### Added
