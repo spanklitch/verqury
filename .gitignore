@@ -20,3 +20,6 @@ out/
 
 # Orchestrator working state — local only (may contain personal IDs)
 SESSION_STATE.md
+
+# Internal infra/lab notes — local only (documents DNS/email/registrant details)
+docs/website.md

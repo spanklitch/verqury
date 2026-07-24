@@ -122,4 +122,5 @@ data lives in a user-owned directory of plain files.
 
 ---
 
-© 2026 FlawedWorks / Gary Seiler. All rights reserved.
+Source available under the [MIT License](LICENSE). © 2026 Gary Seiler / FlawedWorks.
+"Verqury" and the Verqury logo are marks of Gary Seiler / FlawedWorks.

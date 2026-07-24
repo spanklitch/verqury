@@ -585,7 +585,7 @@ node-pty/better-sqlite3, pre-existing). Gotchas in eng-notes **§8**; ADR-0011 P
 All human-gated steps completed with Gary, in a plain Terminal (no bootstrap trap):
 - **Installed** `skills/verqury-ask/` → `~/.claude/skills/` (hot-loaded). **Built the 0.6.0 AppImage + .deb**,
   repointed `~/Applications/Verqury.AppImage` (byte-identical to the build); packaged boot verified.
-- **Email = personal Gmail** (`[redacted]`), App Password → `~/.claude/.env` `VERQURY_SMTP_PASSWORD`.
+- **Email = personal Gmail** (address redacted — see local `~/.claude/.env`), App Password → `~/.claude/.env` `VERQURY_SMTP_PASSWORD`.
   We first chased **gary@flawedworks.com**: found flawedworks.com DNS is on **Cloudflare** but MX = **ImprovMX**
   (forward-only); ImprovMX **SMTP sending is Premium-only ($9/mo)** with no DKIM on Free — so sending *as* the
   flawedworks alias needs either that upgrade or a Gmail "Send mail as" alias. Gary chose to **drop the alias** and

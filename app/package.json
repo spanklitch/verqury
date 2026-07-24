@@ -3,6 +3,7 @@
   "version": "0.6.0",
   "private": true,
   "description": "Verqury Electron shell — workflow layer over AI-assisted product development",
+  "license": "MIT",
   "type": "module",
   "main": "main.js",
   "author": "FlawedWorks <hello@flawedworks.com>",
