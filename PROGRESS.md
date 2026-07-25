@@ -625,3 +625,30 @@ hook must self-time (7-min reminder / 9-min expire→`ask`, 1-min margin under t
 Captured as **ADR-0011** (full reasoning + alternatives, incl. the shelved native iOS app) and
 **plan §8** (Phases A→C). **Rulings:** expire→`ask`; Phase A is Telegram-only (email→C).
 Secrets → `~/.claude/.env`, non-secrets → `config.json`. **Phase A is the next build session.**
+
+### 2026-07-24 — verqury.com website + open-source flip + app↔web loop (initiative, not a phase)
+A large multi-part session outside the build-plan phases. **ADR-0012** records the decision.
+
+- **Positioning/outline** → `docs/website.md`: FREE + OPEN SOURCE (MIT), standalone verqury.com
+  showcase on Cloudflare Pages, badged FlawedWorks; app links out to a web companion.
+- **Went public:** security-scanned all 19 spanklitch repos (trees + full history); purged the
+  personal Gmail from verqury history (`git filter-repo` + force-push + re-tag); added MIT LICENSE
+  + `license` fields + README notice; gitignored `docs/website.md`. `spanklitch/verqury` → public.
+- **Shipped verqury.com:** new repo `spanklitch/verqury-site` (static, no build) — landing + 4
+  sub-pages, dark-navy/chrome theme, subtle motion (reduced-motion + JS-gated reveals), `_headers`
+  CSP. Cloudflare Pages connected (Gary's OAuth) → LIVE at https://verqury.com + www (SSL, all
+  pages 200). Enabled Discussions; published the v0.6.0 GitHub Release (AppImage + .deb).
+- **App deep-links** (commit 6733034, pushed; release batched): Settings "About & updates" card →
+  Check-for-updates (`/whats-new/`) + Share-an-idea (`/ideas/`); `app:version` IPC; VERQURY_VERIFY
+  block 14. Lint + 17 app tests green.
+- **Screenshots:** new `VERQURY_CAPTURE` dev hook captures each view against a curated "Aurora"
+  demo root → real shots replaced the v0.3.0 placeholders (2×2 grid). Fixed a bug the shots
+  surfaced (task detail rendered literal "null" for report-less tasks).
+- **PII remediation (image-based):** grep pass was blind to pixel-PII — public README hero leaked
+  a real home-dir path + private project name, terminal.png leaked the machine hostname. Replaced
+  HEAD; filter-repo-purged the PII image blobs from BOTH repos' history + deleted 4 stale remote
+  feature branches; fresh-mirror verified; overwrote Cloudflare's retained terminal.png with a 1×1
+  blank (Pages keeps deleted files). Other public repos' images audited clean. Eng-notes §9.
+- **Relay** confirmed working (was presence=Here, not a bug); ADR-0011 → Accepted.
+- **Deferred to v0.6.1 batch:** rebuild + `gh release` so deep-links reach the installed app; run
+  block 14 in a clean build; workflow videos (Gary records). Resume list in SESSION_STATE.md.

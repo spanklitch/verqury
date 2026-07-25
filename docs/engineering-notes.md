@@ -338,3 +338,33 @@ makes `createWindow(false)` start the app in the tray without showing a window.
   message, so a stamped record + no error = sent; if the inbox seems empty it's Gmail delivery
   latency or a filtered tab (Updates/Promotions/Spam), not a send failure. The card is the
   actionable channel regardless — the owner never needs to wait for the email to answer.
+
+## 9. Web companion & going-public (verqury.com, ADR-0012)
+
+- **Cloudflare Pages keeps a file you *deleted* between deploys.**
+  *Symptom:* after removing an asset from the site repo and pushing, the old URL still returns 200
+  — even with a cache-bust query, and even after a dashboard "Purge by URL" (`cf-cache-status:
+  MISS` → 200, i.e. served fresh from origin). *Cause:* Pages incremental deploys upload
+  new/changed files but **do not prune removed ones**; a cache purge can't fix an origin that
+  still has the file, and a no-op redeploy doesn't prune it either. *Fix:* **overwrite, don't
+  delete** — Pages *does* update *changed* files, so replace the path with a harmless file (a 1×1
+  transparent PNG) and push; the URL then serves benign content.
+
+- **A grep security pass is blind to PII baked into image pixels.**
+  *Symptom:* the go-public secret/PII scan was clean, yet the public README hero showed a real
+  project with a `repo:` line exposing a home-dir path + private project name, and a terminal
+  screenshot showed the machine hostname (`user@host`). *Cause:* text scans can't read text
+  rendered into PNGs.
+  *Fix:* **every repo going public gets a visual image pass** (eyeball screenshots for hostnames,
+  home paths, real project/data) in addition to the text grep. Capture app screenshots against a
+  **curated demo data root** (`VERQURY_DATA_ROOT=<temp>` + the `VERQURY_CAPTURE` hook), never the
+  real one. The embedded terminal shows the real shell prompt (PS1) regardless of data root — so
+  exclude terminal shots from public assets.
+
+- **`git filter-repo` misses branches that exist only on the remote.**
+  *Symptom:* after purging blobs and force-pushing `main` + tags, a fresh mirror still contained
+  the stripped blobs. *Cause:* filter-repo rewrote only local refs; stale **remote-only feature
+  branches** still referenced the old blobs. *Fix:* enumerate `git ls-remote --heads`, delete
+  stale merged branches (`git push origin --delete <b>`), then verify with a fresh `git clone
+  --mirror` that the blob hashes are absent from every ref. (Same gotcha bit the email purge.)
+  GitHub may still serve an unreachable blob by SHA until GC — low residual risk for non-secret PII.

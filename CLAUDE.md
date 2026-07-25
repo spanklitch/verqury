@@ -116,6 +116,45 @@ root/core/app. README hero + Packaging; CHANGELOG [0.1.0]; eng-notes §4. 47 tes
 in this sandbox (app-builder-bin dropped); Gary runs `npm run dist -w app` on a real host,
 verifies, then tags v0.1.0. Verqury is feature-complete.**
 
+### 2026-07-24 — verqury.com website + open-source + app↔web loop (ADR-0012)
+Big multi-part session — a **new initiative**, not a build-plan phase. Arc:
+- **Positioning + outline** (`docs/website.md`): Verqury ships **FREE + OPEN SOURCE (MIT)** as a
+  portfolio piece; **standalone verqury.com** showcase on **Cloudflare Pages**, badged FlawedWorks
+  family; app↔web loop. Sitemap / theme / IP posture captured there. **ADR-0012.**
+- **Security pass → repo PUBLIC:** scanned all **19** spanklitch repos (trees + full history) for
+  secrets/PII — clean. Purged personal Gmail from verqury history (`git filter-repo`, force-push,
+  re-tag). Added **MIT LICENSE** + `license` fields + README mark notice; gitignored
+  `docs/website.md` (internal infra notes). `spanklitch/verqury` → **public**.
+- **Built + shipped verqury.com** (new repo **`spanklitch/verqury-site`**, static HTML/CSS/JS, no
+  build): landing (hero · what-it-is · how-it-works · see-it · philosophy · get-it · under-the-hood
+  · FlawedWorks footer) + `/whats-new` `/ideas` `/privacy` `/notice`. Dark-navy + chrome theme on
+  the droplet logo; subtle shimmer/twinkle, reduced-motion-aware, **JS-gated reveals** (visible
+  without JS); `_headers` CSP. Cloudflare Pages connected (Gary did the GitHub OAuth) → **LIVE at
+  https://verqury.com + www** (SSL). Enabled **GitHub Discussions** (ideas board); published the
+  **v0.6.0 Release** (AppImage + .deb) so the Download button resolves.
+- **App deep-links** (commit `6733034`): Settings **"About & updates"** card → Check-for-updates
+  (`/whats-new/`) + Share-an-idea (`/ideas/`) open the browser; **`app:version` IPC**;
+  VERQURY_VERIFY **block 14**. Pushed source, **batched the release** (v0.6.1, deferred).
+- **Screenshots:** added a **`VERQURY_CAPTURE`** dev hook (walks each view against a curated demo
+  root, saves a PNG per view — dev-only, like VERQURY_VERIFY). Curated an **"Aurora"** demo
+  project; captured real shots → replaced the v0.3.0 placeholders on the site (projects/tasks/
+  inbox/about, 2×2). Fixed a real bug the shots surfaced: task detail rendered literal **"null"**
+  for tasks with no report (native `replaceChildren(null)` coercion) → empty node.
+- **PII remediation (image-based) — the grep pass was blind to pixels.** Public README hero showed
+  a real home-dir path + private project name; terminal.png showed the machine hostname (`user@host`).
+  Replaced HEAD hero with the clean Aurora capture; **filter-repo-purged the PII image blobs from
+  BOTH verqury and verqury-site history** (+ deleted 4 stale remote feature branches carrying
+  them); force-pushed; fresh-mirror verified clean. **Cloudflare Pages retains deleted files** →
+  overwrote the live terminal.png with a **1×1 blank**. Audited images in the other public repos
+  (flawedworks-site ZAGNALS marketing shots + icons) — clean. Gotchas in **eng-notes §9**; process
+  fix: **visual image pass** before any repo goes public.
+- **Relay:** confirmed **WORKING** (was presence=Here — not a bug; Away arms it) — off the repair
+  list; surfaced on the site as a **"New"** feature. **ADR-0011 flipped Proposed→Accepted** (shipped
+  v0.6.0).
+- **Still open (v0.6.1 batch, deferred):** rebuild AppImage/.deb + `gh release` so the deep-links
+  reach the installed app; run VERQURY_VERIFY block 14 in a clean build; workflow **videos** (Gary
+  records). See SESSION_STATE.md for the resume list.
+
 ### 2026-07-15 — Remote decision relay: Phase C (built) — RELAY COMPLETE
 Questions + long-form email (plan §8 Phase C, ADR-0011). Core: `approvals/` is now a Decision Inbox with a
 **`kind`** (`permission` | `question`; missing → permission, Phase-B back-compat) — `createQuestion`/`answerQuestion`
