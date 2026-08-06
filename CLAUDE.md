@@ -116,6 +116,29 @@ root/core/app. README hero + Packaging; CHANGELOG [0.1.0]; eng-notes §4. 47 tes
 in this sandbox (app-builder-bin dropped); Gary runs `npm run dist -w app` on a real host,
 verifies, then tags v0.1.0. Verqury is feature-complete.**
 
+### 2026-08-06 — v0.6.1 release cut (the deferred batch)
+Shipped the batch deferred on 2026-07-24. **Why it stalled:** that session ran Claude Code *inside*
+Verqury's own embedded terminal, so it could not overwrite its own mounted AppImage. Ran from a
+plain xfce4-terminal this time — blocker gone. Cut: stale **README status line** (said v0.3.0 while
+the repo was v0.6.0, public-facing) → 0.6.1; `npm version --workspaces --include-workspace-root
+--no-git-tag-version` (root+core+app+**lockfile** in one shot — no repeat of the `9c7ce18` manual
+lockfile sync); CHANGELOG `[Unreleased]` → `[0.6.1] - 2026-08-06`; built AppImage + .deb clean;
+**block 14 verified in the packaged build** (aboutDeepLinks/aboutVersionShown/aboutSiteLink,
+**55/55 green** with full regression) against a **throwaway data root** — the harness mutates, never
+point it at real data; launcher repointed 0.6.0→0.6.1 (md5-verified). 70 tests + lint + secret grep
+green. **Build backgrounded on purpose:** a foreground build killed by the agent's 10-min tool
+timeout is precisely how 0.5.1 got its `app-builder CANNOT_EXECUTE`.
+**Harness gotcha:** `packetHasContext` asserts three *literal* fixture strings (`build context`,
+`Security Baseline`, `Build 93`) — a bare seeded root fails it. Not a regression; seed to match.
+**Non-bug diagnosed:** "Verqury is closed but Telegram still works" = **one** cause. The app had
+been tray-resident **7d20h** (`main.js:1067` `window-all-closed` keeps it alive when a tray exists —
+design principle #4; only tray→Quit exits). Relay legs are independent: **outbound needs no app**
+(hooks are global in `~/.claude/hooks/` + settings.json, fire for every Claude Code session in any
+terminal), **inbound needs the app** (single `getUpdates` consumer) — so working taps *proved* it was
+alive. **Two UX items logged, not fixed** (out of scope for a cut): no affordance that closing ≠
+quitting; and the **silent half-failure** — app quit while presence=Away still buzzes the phone but
+nothing consumes the reply, so every prompt rides the ~9-min expiry.
+
 ### 2026-07-24 — verqury.com website + open-source + app↔web loop (ADR-0012)
 Big multi-part session — a **new initiative**, not a build-plan phase. Arc:
 - **Positioning + outline** (`docs/website.md`): Verqury ships **FREE + OPEN SOURCE (MIT)** as a

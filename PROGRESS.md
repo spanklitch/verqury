@@ -652,3 +652,47 @@ A large multi-part session outside the build-plan phases. **ADR-0012** records t
 - **Relay** confirmed working (was presence=Here, not a bug); ADR-0011 → Accepted.
 - **Deferred to v0.6.1 batch:** rebuild + `gh release` so deep-links reach the installed app; run
   block 14 in a clean build; workflow videos (Gary records). Resume list in SESSION_STATE.md.
+
+### 2026-08-06 — v0.6.1 release cut (release session, Opus 5)
+**Shipped the deferred v0.6.1 batch** — the deep-links have been on `main` since 2026-07-24 but
+never reached the installed app, because the previous session ran Claude Code *inside* Verqury's
+embedded terminal and could not overwrite its own mounted AppImage. This session ran from a plain
+xfce4-terminal, which removed the blocker.
+
+- **README status line** was stale at v0.3.0 (repo was at v0.6.0 with the whole relay shipped) —
+  the first thing a visitor to the now-public repo reads. Rewritten for 0.6.1.
+- **Version bump** 0.6.0 → **0.6.1** via `npm version --workspaces --include-workspace-root
+  --no-git-tag-version` (root + core + app + lockfile in one shot — avoids the manual lockfile
+  drift that needed the separate `9c7ce18` sync during the 0.5.1 cut).
+- **CHANGELOG** `[Unreleased]` → **`[0.6.1] - 2026-08-06`**, empty `[Unreleased]` retained,
+  compare-links updated.
+- **Built** AppImage + .deb clean (electron-builder 25.1.8, exit 0). Run **backgrounded on
+  purpose**: a foreground build that trips the agent's 10-min tool timeout gets killed mid-flight,
+  which is exactly what produces the `app-builder CANNOT_EXECUTE` state from the 0.5.1 session.
+- **VERQURY_VERIFY block 14 verified in the clean packaged build** (the outstanding item):
+  `aboutDeepLinks` / `aboutVersionShown` / `aboutSiteLink` all true, **55/55 checks green**, full
+  P2–P10 regression alongside. Harness run against a throwaway `VERQURY_DATA_ROOT` in scratch,
+  never the real data root (the harness mutates: creates projects, flips stage, files artifacts).
+- **Launcher repointed** 0.6.0 → 0.6.1 via `scripts/install-desktop.sh` (md5-verified identical to
+  the dist artifact). Rollback = re-run the script against `app/dist/Verqury-0.6.0.AppImage`.
+- 70 tests + lint + secret-hygiene grep green before and after.
+
+**Gotcha (harness fixtures are load-bearing):** a first harness run reported `packetHasContext:
+false`. Not a regression — `main.js:718` asserts three *literal* strings (`build context`,
+`Security Baseline`, `Build 93`) that must exist in the seeded root. A bare `project create` has no
+narrative and a differently-worded log entry fails the match. Re-seeded with those fixtures → true.
+If you re-run the harness on a fresh root, seed it to match or expect this false.
+
+**Diagnosed (not a bug — two symptoms, one cause):** Gary believed Verqury was closed, yet the
+Telegram relay kept working in a plain terminal. The app had been resident **7 days 20 hours**
+(started Jul 29 19:40, ~25 min after boot; no autostart entry). `app/main.js:1067`
+`window-all-closed` deliberately keeps it alive when a tray exists — design principle #4, quiet
+companion; only tray → Quit exits. That also explains the relay: **outbound** needs no app at all
+(the hooks in `~/.claude/hooks/` + `~/.claude/settings.json` are global and fire for *every*
+Claude Code session, in any terminal), while **inbound** taps need the app as the single
+`getUpdates` consumer — so working bidirectional traffic was *proof the app was alive*.
+
+**Two UX items surfaced, deliberately NOT fixed here (out of scope for a release cut):**
+1. No affordance that closing the window ≠ quitting — an 8-day invisible instance is the evidence.
+2. The half-failure is **silent**: quit the app while presence is Away and the phone still buzzes
+   (hooks fire), but nothing consumes the reply — every prompt rides the ~9-min self-expire.

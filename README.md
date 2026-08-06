@@ -7,7 +7,7 @@ memory, reusable guidance, captured artifacts, session bootstrapping, and task
 routing, from first concept through build, release, and marketing.
 
 - **Platform:** Linux x64 (X11) desktop — Node 20 + Electron shell, plain-JS renderer
-- **Status:** **v0.3.0** (2026-07-12) — agent workbench with a **multi-tab** embedded terminal (per-project pinned tabs + bell/attention alerts) and resume reminders, on the v0.2.0 in-app editing + dark-navy base; packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
+- **Status:** **v0.6.1** (2026-08-06) — the **remote decision relay** is complete: approve permission prompts by tap and answer a build's clarifying questions from your phone (Telegram, with long context by email), on the v0.3.0 multi-tab terminal workbench base. Settings now deep-links to the [verqury.com](https://verqury.com) web companion. Packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
 - **Publisher:** [FlawedWorks](https://flawedworks.com)
 
 > Verqury is a workflow layer, not an IDE — and deliberately not a chat interface,
