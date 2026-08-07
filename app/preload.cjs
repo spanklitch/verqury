@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('verqury', {
   getProject: (slug) => ipcRenderer.invoke('project:get', slug),
   setStage: (slug, stage) => ipcRenderer.invoke('project:setStage', slug, stage),
   setNarrative: (slug, body) => ipcRenderer.invoke('project:setNarrative', slug, body),
+  sessionMetrics: (slug) => ipcRenderer.invoke('sessions:metrics', slug),
+  harvestSessions: (slug) => ipcRenderer.invoke('sessions:harvest', slug),
   addLog: (slug, payload) => ipcRenderer.invoke('log:add', slug, payload),
   addDecision: (slug, payload) => ipcRenderer.invoke('decision:add', slug, payload),
   setGuidanceBody: (scope, slug, body) => ipcRenderer.invoke('guidance:setBody', scope, slug, body),

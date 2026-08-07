@@ -86,3 +86,34 @@ test('getNotifyConfig merges core presence with tokenSet status', () => {
     delete process.env.VERQURY_ENV_FILE;
   }
 });
+
+test('session metrics come back labelled, and zeroed before a harvest', () => {
+  const root = tmpRoot();
+  createProject(root, { name: 'Meter', repo: '/repo/meter' });
+  const m = api.getSessionMetrics(root, 'meter');
+  assert.equal(m.sessions, 0);
+  assert.equal(m.activeLabel, '0s');
+});
+
+test('harvestProjectSessions returns the refreshed metrics with it', () => {
+  const root = tmpRoot();
+  const transcripts = fs.mkdtempSync(path.join(os.tmpdir(), 'verqury-app-tx-'));
+  const dir = path.join(transcripts, '-repo-meter');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'sess-1.jsonl'), [
+    JSON.stringify({ type: 'assistant', timestamp: '2026-08-01T10:00:00.000Z', cwd: '/repo/meter', message: { model: 'm', usage: { output_tokens: 5 } } }),
+    JSON.stringify({ type: 'assistant', timestamp: '2026-08-01T10:10:00.000Z', cwd: '/repo/meter', message: { model: 'm', usage: { output_tokens: 5 } } }),
+  ].join('\n'));
+
+  createProject(root, { name: 'Meter', repo: '/repo/meter' });
+  process.env.VERQURY_TRANSCRIPTS_ROOT = transcripts;
+  try {
+    const r = api.harvestProjectSessions(root, 'meter');
+    assert.equal(r.harvested, 1);
+    assert.equal(r.metrics.sessions, 1);
+    assert.equal(r.metrics.outputTokens, 10);
+    assert.equal(r.metrics.activeLabel, '10m'); // gap is under the idle cap, so it all counts
+  } finally {
+    delete process.env.VERQURY_TRANSCRIPTS_ROOT;
+  }
+});

@@ -302,6 +302,11 @@ body {
 .launch-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 18px; }
 .launch-row .btn { padding: 5px 11px; font-size: 12.5px; }
 
+/* Build-time + token meter (ADR-0013) */
+.session-meter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 16px; }
+.session-meter .meter-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+.session-meter .btn { padding: 3px 9px; font-size: 12px; }
+
 /* Notifications & remote relay (ADR-0011) */
 .settings-nav-card { padding: 9px 11px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; margin-bottom: 6px; }
 .settings-nav-card:hover { background: var(--panel-2); }

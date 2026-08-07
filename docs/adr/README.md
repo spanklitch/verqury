@@ -24,3 +24,4 @@ New records start from [`0000-template.md`](0000-template.md) and take the next 
 | [0010](0010-multi-session-terminal.md) | Multi-session terminal — tabs, one per project/build | Accepted |
 | [0011](0011-remote-decision-relay.md) | Remote decision relay — approve builds from the phone via Here/Away + hooks | Accepted |
 | [0012](0012-open-source-and-web-companion.md) | Free + open source, with a standalone verqury.com web companion | Accepted |
+| [0013](0013-session-metrics-harvested-from-transcripts.md) | Session metrics are harvested from Claude Code transcripts into per-session files | Accepted |

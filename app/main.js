@@ -162,6 +162,8 @@ function setupIpc() {
   ipcMain.handle('project:get', (_e, slug) => api.getProject(root, slug));
   ipcMain.handle('project:setStage', (_e, slug, stage) => api.changeStage(root, slug, stage));
   ipcMain.handle('project:setNarrative', (_e, slug, body) => api.editNarrative(root, slug, body));
+  ipcMain.handle('sessions:metrics', (_e, slug) => api.getSessionMetrics(root, slug));
+  ipcMain.handle('sessions:harvest', (_e, slug) => api.harvestProjectSessions(root, slug));
   ipcMain.handle('log:add', (_e, slug, payload) => api.createLog(root, slug, payload));
   ipcMain.handle('decision:add', (_e, slug, payload) => api.createDecision(root, slug, payload));
   ipcMain.handle('guidance:setBody', (_e, scope, slug, body) => api.editGuidanceBody(root, scope, slug, body));
@@ -1050,6 +1052,25 @@ async function runVerify(outDir) {
     result.aboutDeepLinks = await dom("(()=>{const b=[...document.querySelectorAll('.detail-actions button')].map(x=>x.textContent);return b.some(t=>t.includes('Check for updates'))&&b.some(t=>t.includes('Share an idea'));})()");
     result.aboutVersionShown = await dom("(document.querySelector('.detail-sub')?.textContent||'').includes('Verqury v')");
     result.aboutSiteLink = await dom("[...document.querySelectorAll('.settings-link')].some(a=>a.getAttribute('href')==='https://verqury.com')");
+
+    // (16) Build-time meter (ADR-0013): harvest a fixture transcript through the
+    // preload bridge and assert the meter renders the harvested time, not a zero.
+    // VERQURY_TRANSCRIPTS_ROOT is set by the harness runner to a throwaway tree.
+    await dom("document.querySelector('.tab[data-mode=projects]').click()");
+    await wait(200);
+    if (process.env.VERQURY_TRANSCRIPTS_ROOT) {
+      const meterSlug = 'harness-metrics';
+      api.makeProject(root, { name: 'Harness Metrics', stage: 'build', status: 'active', repo: '/harness/repo' });
+      await wait(300);
+      const harvest = await dom(`window.verqury.harvestSessions(${JSON.stringify(meterSlug)})`);
+      result.meterHarvested = harvest?.harvested === 2;
+      result.meterMetrics = harvest?.metrics?.activeLabel === '20m' && harvest?.metrics?.outputTokens === 30;
+      result.meterIdempotent =
+        (await dom(`window.verqury.harvestSessions(${JSON.stringify(meterSlug)})`))?.metrics?.sessions === 2;
+      await dom(`[...document.querySelectorAll('.project-card')].find(c=>c.textContent.includes('Harness Metrics')).click()`);
+      await wait(400);
+      result.meterRendered = await dom("(document.querySelector('.session-meter .meter-value')?.textContent||'').includes('20m')");
+    }
 
     await dom("document.querySelector('.tab[data-mode=projects]').click()"); // end on a normal view for the shot
     await wait(200);

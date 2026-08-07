@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **A build-time meter on every project.** Verqury now reads the transcripts Claude Code
+  already leaves on disk and turns them into one durable record per session, so a project
+  can finally answer "how much build time is in this?" The meter shows **active** time —
+  gaps longer than 15 minutes are counted as walking away, not working — alongside token
+  totals and a session count. Because the transcripts are already there, the first harvest
+  **backfills every past session**: the meter opens with real history instead of a zero.
+  Wall-clock time and the raw token counters stay one hover away.
+- **`verqury session harvest|list|metrics`** on the CLI, for the same numbers without the app.
+
+### Notes
+- Session records are plain markdown under `projects/<slug>/sessions/`, like everything else
+  (ADR-0001) — once harvested, the numbers are yours and survive any change upstream.
+- Sessions are matched to a project by its `repo` path, so a project needs one to be measured.
+  Sessions run from a subdirectory of the repo count too.
+
 ## [0.6.2] - 2026-08-06
 
 ### Added

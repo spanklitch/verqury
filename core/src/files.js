@@ -14,6 +14,7 @@ export * from './tasks.js';
 export * from './adapters.js';
 export * from './notify.js';
 export * from './approvals.js';
+export * from './sessions.js';
 export * from './schema.js';
 export { ulid } from './ids.js';
 export { slugify } from './slug.js';

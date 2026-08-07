@@ -17,6 +17,7 @@ import * as tasks from './tasks.js';
 import * as adapters from './adapters.js';
 import * as notify from './notify.js';
 import * as approvals from './approvals.js';
+import * as sessions from './sessions.js';
 import * as search from './search.js';
 
 const OPTIONS = {
@@ -81,6 +82,9 @@ Usage: verqury <command> [args] [--data-root <dir>]
   task status <project> <id> <status>
   task handoff <project> <id>          Print the hand-off payload
   task report <project> <id> <artifactId>   Attach a report → done → log entry
+  session harvest <project>            Read Claude Code transcripts → per-session metrics (ADR-0013)
+  session list [--project s] [--json]
+  session metrics <project> [--json]   Build time + token totals for a project
   search <query...> [--project s] [--type project|guidance|decision|log|artifact] [--limit n] [--json]
   timeline <project>                   Log + decisions, newest first
   index rebuild | refresh
@@ -495,6 +499,38 @@ function main() {
       if (sub === 'rebuild') return void console.log(`Rebuilt index: ${search.rebuildIndex(root)} documents`);
       if (sub === 'refresh') return void console.log(`Refreshed index: ${search.refreshIndex(root)} changes`);
       return fail(`unknown index subcommand: ${sub ?? '(none)'}`);
+    }
+
+    case 'session': {
+      if (sub === 'harvest') {
+        const project = positionals[2];
+        if (!project) fail('session harvest needs a <project>');
+        const r = sessions.harvestSessions(root, project);
+        afterMutation();
+        console.log(`Harvested ${r.harvested} session(s)${r.skipped ? `, skipped ${r.skipped}` : ''} → ${project}`);
+        return;
+      }
+      if (sub === 'list') {
+        const list = sessions.listSessions(root, { project: values.project });
+        if (values.json) return void console.log(JSON.stringify(list));
+        if (!list.length) return console.log('(no sessions — try: verqury session harvest <project>)');
+        for (const s of list) {
+          console.log(`${s.started?.slice(0, 16)}\t${sessions.formatDuration(s.activeSeconds)}\t${s.outputTokens} out\t${s.project}`);
+        }
+        return;
+      }
+      if (sub === 'metrics') {
+        const project = positionals[2];
+        if (!project) fail('session metrics needs a <project>');
+        const m = sessions.projectMetrics(root, project);
+        if (values.json) return void console.log(JSON.stringify(m));
+        console.log(`${m.sessions} session(s)`);
+        console.log(`build time  ${sessions.formatDuration(m.activeSeconds)} active (${sessions.formatDuration(m.wallSeconds)} wall)`);
+        console.log(`tokens      ${m.inputTokens} in / ${m.outputTokens} out`);
+        console.log(`cache       ${m.cacheWrite} written / ${m.cacheRead} read`);
+        return;
+      }
+      return fail(`unknown session subcommand: ${sub ?? '(none)'}`);
     }
 
     case 'config': {

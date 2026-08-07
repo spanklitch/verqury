@@ -48,5 +48,14 @@ export function projectPaths(root, slug) {
     artifacts: path.join(base, 'artifacts'),
     tasks: path.join(base, 'tasks'),
     packets: path.join(base, 'packets'),
+    sessions: path.join(base, 'sessions'),
   };
+}
+
+// Where Claude Code writes its per-session transcripts (ADR-0013). Overridable so
+// tests can point at a fixture tree instead of the real one.
+export function transcriptsRoot(explicit) {
+  return explicit
+    || process.env.VERQURY_TRANSCRIPTS_ROOT
+    || path.join(os.homedir(), '.claude', 'projects');
 }

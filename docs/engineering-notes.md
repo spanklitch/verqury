@@ -439,3 +439,54 @@ makes `createWindow(false)` start the app in the tray without showing a window.
   (real limit 4096) and truncated by measuring the **assembled** string, not by summing its
   fixed parts — the `join('\n')` separators are trivial to miscount, and a first attempt
   overshot by exactly one character. Over the cap, the send fails and the card is lost.
+
+## 12. Session metrics: harvesting Claude Code transcripts (2026-08-07, ADR-0013)
+
+- **We read an internal format on purpose, and it is contained.** `transcript_path` is a
+  documented hook field, but the **contents** of the JSONL are not a supported interface —
+  the docs steer hooks toward `last_assistant_message` on `Stop` instead. Parsing lives in
+  `core/src/sessions.js` and nowhere else, tolerates unparseable lines (the file is appended
+  to live, so a truncated final line is normal), and degrades to a partial record rather than
+  throwing. Once harvested, the numbers are file-backed truth; an upstream format change
+  breaks *future* harvests and leaves history intact.
+
+- **The directory slug is a shortcut; `cwd` is the contract.** Claude Code names a transcript
+  directory after the cwd with non-alphanumerics flattened to `-`
+  (`/home/dev/proj` → `-home-dev-proj`). Do **not** join on that name. Match the `cwd` field
+  recorded inside the file against the project's `repo` (a path-boundary prefix test), and use
+  the slug only to narrow which directories to open.
+
+- **Narrow by slug *prefix*, or you silently lose subdirectory sessions.** A session started
+  in `<repo>/app` lands in its own directory (`-home-dev-proj-app`), not the repo's. An
+  exact-match fast path drops those sessions with no error — a unit test caught it. Prefix
+  matching over-selects (`/repo/mine-other` also matches `-repo-mine`), which is harmless
+  because the `cwd` check rejects the impostor.
+
+- **Wall-clock time is not build time — it overstates by ~5×.** Measured on this project's
+  own 9 transcripts: **96.5 h** first-record-to-last versus **20.6 h** once gaps over 15
+  minutes are capped. The gap is a laptop left open overnight. Both figures are recorded
+  (`wallSeconds`, `activeSeconds`) so the threshold can be re-tuned by re-harvesting, but
+  active is the only honest headline.
+
+- **Never sum the four token counters into one number.** Cache reads dominate by two orders
+  of magnitude (~235 M read vs ~2 M output here) and are the cheapest tokens. A single
+  "tokens" figure would be dominated by the cheapest component and read as alarming. Actual
+  cost needs `claude_code.cost.usage` over OpenTelemetry.
+
+- **Why not OpenTelemetry, given it is the official interface?** It exports exactly what we
+  want (`token.usage`, `cost.usage`, `lines_of_code.count`) — but it is **prospective only**
+  (no history to backfill), needs `CLAUDE_CODE_ENABLE_TELEMETRY=1` on every session, and its
+  collector-free Prometheus exporter **binds a single fixed port (9464)**, which collides
+  head-on with Verqury's concurrent sessions (ADR-0010). It is the intended successor for
+  cost and LOC, not a drop-in today.
+
+- **Harness gotcha (seeding, not code).** `captureFiledArtifact` asserts the inbox holds
+  **exactly one** artifact, so a seed root must file **none**; `markdownRendered` needs a
+  guidance body with an actual `#` heading. Both fail as false regressions otherwise — the
+  same literal-fixture trap as `packetHasContext` (§ v0.6.1 notes).
+
+- **`hotkeyRegistered` fails whenever Verqury is already running.** The installed AppImage is
+  tray-resident and holds the global `Control+Alt+C`; a second instance cannot register it,
+  so the harness reports false. Not a regression — confirm by checking that
+  `captureFiledArtifact`/`captureRoundTrips` still pass, since they exercise the same capture
+  path without the OS shortcut.

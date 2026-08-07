@@ -679,6 +679,65 @@ async function refreshTasks() {
 
 /* ---------- detail panes ---------- */
 
+// Token counts run to hundreds of millions; a raw figure is unreadable in a meter.
+function compactTokens(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
+  return String(v);
+}
+
+// Build-time + token meter (ADR-0013). Reads harvested per-session files; the
+// Harvest button re-reads the Claude Code transcripts behind them.
+function renderSessionMeter(project) {
+  const meter = h('div', { class: 'session-meter' });
+
+  const harvestBtn = h('button', {
+    class: 'btn small',
+    onclick: async () => {
+      harvestBtn.disabled = true;
+      try {
+        const r = await window.verqury.harvestSessions(project.slug);
+        fill(r.metrics);
+        toast(r.harvested ? `Harvested ${r.harvested} session(s)` : 'No sessions found for this repo');
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        harvestBtn.disabled = false;
+      }
+    },
+  }, '↻ Harvest');
+
+  function fill(m) {
+    meter.replaceChildren();
+    if (!project.repo) {
+      meter.append(h('span', { class: 'muted', text: 'Set a repo path on this project to track build time.' }));
+      return;
+    }
+    if (!m || !m.sessions) {
+      meter.append(h('span', { class: 'muted', text: 'No build sessions harvested yet.' }));
+    } else {
+      meter.append(
+        h('span', { class: 'meter-value', text: `⏱ ${m.activeLabel}` }),
+        h('span', { class: 'muted', text: `build time · ${compactTokens(m.outputTokens)} out · ${m.sessions} session${m.sessions === 1 ? '' : 's'}` }),
+      );
+      // Wall-clock and the raw counters live in the tooltip: active time is the
+      // honest headline, but the numbers behind it stay reachable.
+      meter.title = [
+        `${m.activeLabel} active of ${m.wallLabel} wall-clock`,
+        `tokens: ${m.inputTokens.toLocaleString()} in / ${m.outputTokens.toLocaleString()} out`,
+        `cache: ${m.cacheWrite.toLocaleString()} written / ${m.cacheRead.toLocaleString()} read`,
+      ].join('\n');
+    }
+    meter.append(harvestBtn);
+  }
+
+  fill(null);
+  window.verqury.sessionMetrics(project.slug).then(fill).catch(() => {});
+  return meter;
+}
+
 function renderProjectDetail(project, timeline) {
   const select = h('select', { class: 'stage-select', onchange: (e) => onStageChange(e.target.value) });
   for (const s of state.stages) {
@@ -736,7 +795,7 @@ function renderProjectDetail(project, timeline) {
   const bootstrapBtn = h('button', { class: 'btn', onclick: () => showBootstrap(project.slug) }, '⚡ Bootstrap');
   detailEl.replaceChildren(
     h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: project.name }), h('div', { class: 'head-actions' }, bootstrapBtn, select)),
-    sub, launchRow, narrative, timelineEl,
+    sub, renderSessionMeter(project), launchRow, narrative, timelineEl,
   );
 }
 

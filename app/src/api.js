@@ -48,6 +48,9 @@ import {
   getNotify,
   setPresence as coreSetPresence,
   updateNotify as coreUpdateNotify,
+  harvestSessions,
+  projectMetrics,
+  formatDuration,
   listApprovals,
   pendingApprovals,
   getApproval,
@@ -109,6 +112,18 @@ export function getProject(root, slug) {
 
 export function changeStage(root, slug, stage) {
   return setStage(root, slug, stage);
+}
+
+// Build-time + token meter (ADR-0013). Reading is cheap (per-project markdown);
+// harvesting re-reads the transcripts and is only done on demand.
+export function getSessionMetrics(root, slug) {
+  const m = projectMetrics(root, slug);
+  return { ...m, activeLabel: formatDuration(m.activeSeconds), wallLabel: formatDuration(m.wallSeconds) };
+}
+
+export function harvestProjectSessions(root, slug) {
+  const r = harvestSessions(root, slug);
+  return { harvested: r.harvested, skipped: r.skipped, metrics: getSessionMetrics(root, slug) };
 }
 
 export function editNarrative(root, slug, body) {

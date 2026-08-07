@@ -765,3 +765,60 @@ Backfilled the entry above from the commit range + eng-notes, re-verified state 
 tags pushed, release assets present, installed md5 matches), and rewrote SESSION_STATE.md.
 **Process note:** a release cut isn't done when the tag lands — PROGRESS.md is the only place
 the *reasoning* survives, and it's the one artifact a shipping session is most likely to skip.
+
+### 2026-08-07 — Project instrumentation: ADR-0013 + the build-time meter (initiative, Opus 5)
+
+Opened the initiative behind Gary's three `idea`-lane tasks (Time Tracker, Token Tracker, Lines
+of Code Counter). They are **one** question — *what did this project cost to build?* — so the
+session went **ADR first**, then one slice: the shared substrate plus time and tokens. LOC stays
+filed.
+
+**The finding that shaped everything.** Token Tracker was flagged last session as the riskiest
+data-sourcing problem. It wasn't — the data was already on disk. Claude Code writes one JSONL
+transcript per session under `~/.claude/projects/<slugified-cwd>/`, and every assistant record
+carries a full `usage` block. Time and tokens therefore come from **the same file scan**; they
+were never two features. The join key already existed too: a project's `repo` frontmatter field.
+
+**Weighed the official interface honestly, and rejected it with reasons** (Gary's "is there an
+official API?" rule). Claude Code *does* export `claude_code.token.usage`, `cost.usage`, and
+`lines_of_code.count` over OpenTelemetry — better-specified, and it answers all three ideas.
+It loses on three points that are decisive here: it is **prospective only** (the transcripts
+already held 9 sessions / 96.5 h / 234 M cache-read tokens for this project — OTel starts every
+project at zero), its collector-free exporter **binds one fixed port (9464)** against ADR-0010's
+concurrent sessions, and it needs `CLAUDE_CODE_ENABLE_TELEMETRY=1` on **every** session or the
+hole is permanent. Recorded in ADR-0013 as the intended successor for cost + LOC.
+
+**Wall-clock time would have lied by ~5×.** Measured on this project's own transcripts: **96.5 h**
+first-record-to-last vs **20.6 h** with idle gaps over 15 min capped. The difference is a laptop
+left open overnight. Both are recorded (`wallSeconds`/`activeSeconds`); **active** is the headline,
+wall sits in the tooltip. A meter that says 96.5 h is a vanity number, not a smaller truth.
+
+**Built.** `core/src/sessions.js` — `harvestSessions` / `listSessions` / `projectMetrics` /
+`summarizeTranscript` / `findTranscripts`, writing one record per session to
+`projects/<slug>/sessions/<session-id>.md` (a **fourth** file-backed collection beside artifacts,
+tasks, memory — ADR-0001). Session id *is* the filename, so re-harvesting is idempotent by
+construction, and the first run **backfills all history**. `verqury session harvest|list|metrics`
+on the CLI; a meter on project detail (`⏱ 20.6h build time · 2.0M out · 9 sessions`) with a
+↻ Harvest button, raw counters in the tooltip.
+
+**Two bugs the tests caught, both real:**
+1. The slug fast path matched the transcript directory **exactly**, which silently dropped every
+   session started in a *subdirectory* of the repo (they get their own directory). Fixed to
+   narrow by slug **prefix**; `cwd` inside the file remains the authoritative join, which is what
+   rejects a same-prefix neighbour like `/repo/mine-other`.
+2. A PII slip: the slug unit test hard-coded the real home path + username into a **public** repo
+   — the exact class of leak eng-notes §9 exists to prevent. Caught by the pre-commit PII grep,
+   not by review. Genericized to `/home/dev`.
+
+**Verified.** **88 tests green** (61 core + 27 app, up from 78) + lint clean + secret/PII grep
+clean. VERQURY_VERIFY harness against a **throwaway** root + fixture transcript tree:
+**74/75**, including the new meter block (`meterHarvested`/`meterMetrics`/`meterIdempotent`/
+`meterRendered`) and full regression. The one false is `hotkeyRegistered` — Gary's installed
+AppImage was tray-resident and holds the global `Control+Alt+C`, so a second instance can't
+register it; `captureFiledArtifact`/`captureRoundTrips` pass on the same code path without the
+OS shortcut, which is how you tell it apart from a regression.
+
+**Deviations:** none. No release cut — this session ran in a plain xfce4-terminal (build was
+possible), but the slice is source-only and 0.6.3 should batch with whatever comes next.
+
+Gotchas in engineering-notes **§12**.
