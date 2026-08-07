@@ -47,6 +47,7 @@ import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
 import * as telegram from './src/telegram.js';
 import { makeTransport, sendContextEmail } from './src/mailer.js';
+import { parseAskPayload, askCardText, askEmailBody } from './src/ask-card.js';
 
 // Track text WE put on the clipboard, so clipboard-watch doesn't re-capture it.
 let selfWrite = '';
@@ -432,10 +433,20 @@ async function reconcileApprovals() {
         if (!card) {
           relayCards.set(a.id, { messageId: null, remindedAt: null }); // claim before await (no dup)
           let emailed = false;
-          if (a.kind === 'question') emailed = await maybeEmailQuestion(a, notify);
-          const res = a.kind === 'question'
-            ? await telegram.sendQuestionCard(token, chatId, questionCardText(a, emailed), a.id, a.options || [])
-            : await telegram.sendApprovalCard(token, chatId, cardText(a), a.id);
+          let res;
+          if (a.kind === 'question') {
+            emailed = await maybeEmailQuestion(a, notify);
+            res = await telegram.sendQuestionCard(token, chatId, questionCardText(a, emailed), a.id, a.options || []);
+          } else {
+            // An AskUserQuestion permission gets the readable card (+ emailed options);
+            // anything else is a plain tool permission.
+            const digest = askDigest(a);
+            if (digest) emailed = await maybeEmailAsk(a, digest, notify);
+            const text = digest
+              ? askCardText({ code: short(a.id), project: a.project, sessionId: a.sessionId }, digest, emailed)
+              : cardText(a);
+            res = await telegram.sendApprovalCard(token, chatId, text, a.id);
+          }
           const messageId = res?.result?.message_id ?? null;
           if (messageId) relayCards.set(a.id, { messageId, remindedAt: null });
           else relayCards.delete(a.id); // send failed — retry next reconcile
@@ -487,6 +498,38 @@ function questionCardText(a, emailed) {
   const meta = [a.project && `📁 ${a.project}`, a.sessionId && `#${a.sessionId}`].filter(Boolean).join('  ');
   if (meta) lines.push(meta);
   return lines.join('\n');
+}
+
+// Claude Code's AskUserQuestion arrives as a PERMISSION record whose body is the tool's
+// JSON payload. Rendering it for the phone/email lives in app/src/ask-card.js (pure +
+// unit-tested); here we only fetch the record body and wire the result to the channels.
+// The gate can still only answer allow/deny — approving means "let me answer at my desk".
+function askDigest(a) {
+  if (a.kind === 'question' || a.tool !== 'AskUserQuestion') return null;
+  return parseAskPayload(api.getApprovalById(root, a.id)?.body);
+}
+
+// Long-form options for an AskUserQuestion, over the same powerless send-once channel.
+async function maybeEmailAsk(a, digest, notify) {
+  if (a.emailedAt) return false;
+  const body = askEmailBody(digest);
+  if (body.length < EMAIL_BODY_THRESHOLD) return false; // only escalate what a card can't carry
+  const email = notify.email || {};
+  const password = api.readSmtpPassword();
+  if (!password || !email.from) return false; // not configured → skip; the card still sends
+  try {
+    const transport = makeTransport(email, password);
+    await sendContextEmail(transport, email, {
+      code: short(a.id),
+      summary: digest[0]?.question || a.summary || 'question',
+      body,
+      project: a.project,
+    });
+    api.markQuestionEmailed(root, a.id);
+    return true;
+  } catch {
+    return false; // best-effort; the card is the authority
+  }
 }
 
 // preview is body.slice(0,140); a full 140 means the body was long enough to email.
