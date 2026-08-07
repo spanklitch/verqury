@@ -696,3 +696,72 @@ Claude Code session, in any terminal), while **inbound** taps need the app as th
 1. No affordance that closing the window ≠ quitting — an 8-day invisible instance is the evidence.
 2. The half-failure is **silent**: quit the app while presence is Away and the phone still buzzes
    (hooks fire), but nothing consumes the reply — every prompt rides the ~9-min self-expire.
+
+### 2026-08-06 — v0.6.2: six fixes from Gary's list (fix session, shipped)
+
+Not a plan phase — the fix/feature list foreshadowed at the end of the 0.6.1 cut, worked in one
+sitting and released the same day. Four commits (`f032471` terminal tabs → `0dfbfbf` relay →
+`d9fca8c` tasks → `325d61a` docs) then `7596865` cut **v0.6.2**; tag pushed, GitHub release
+published with AppImage + .deb, launcher repointed (installed AppImage md5-matches
+`app/dist/Verqury-0.6.2.AppImage`). **78 tests green** (53 core + 25 app; +8 from the new
+`app/test/ask-card.test.js`) + lint.
+
+**1. The bell was eating the keyboard — and it was never the bell.** Typing in one terminal tab
+while another rang BEL sent every subsequent keystroke nowhere until you clicked back in. Not
+focus-stealing and not a tab switch: `onBell` called the full `render()`, whose
+`replaceChildren` detached and re-appended the *active* session's container, and **detaching a
+DOM node moves focus out of everything inside it** — here the xterm helper textarea. `render()`
+never re-focuses; only `setActive` does, which is why clicking the tab you were already on
+"fixed" it. A bell now repaints only the tab strip. Guarded by VERQURY_VERIFY **block 15**
+(`bellKeepsFocus`, `main.js:1025`) — and the guard was **confirmed to go false against the old
+code** before it was kept. A regression guard nobody has watched fail is not a guard.
+
+**2. The drop overlay latched on forever.** Dragging a file onto the embedded terminal left the
+dashed "Drop to capture" overlay stuck until restart. The overlay is cleared by document-level
+listeners on the **bubble** phase, and the terminal's own `drop` handler calls
+`stopPropagation()` — so the cleanup never ran. Cleanup moved to the **capture** phase (plus
+`dragend` for a drag abandoned outside the window), and the overlay no longer claims the terminal
+area at all, since a drop there means something different.
+
+**3. Terminal tabs got legible.** Per-tab colors *claimed* for a tab's lifetime (not positional —
+positional re-colors survivors when a neighbour closes, which destroys the "the build is in the
+purple one" muscle memory the color exists to build); a closed tab's color returns to the pool.
+Background-tab bell blinks in its own color, with a steady high-contrast state under
+`prefers-reduced-motion`. File drops type the path like a plain terminal does — via
+`webUtils.getPathForFile()`, because **Electron 41 removed `File.path`** and reading it just
+yields `undefined` (checked against the installed `electron.d.ts`, not memory).
+
+**4. The Phase C email channel had never fired — it had no input.** Fully configured since
+0.6.0, zero mails sent. `maybeEmailQuestion` requires `kind === 'question'`, and only the
+`verqury-ask` skill creates those; across **347** approval records there were **zero**. The
+feature wasn't broken, it had never been triggered. *Before debugging a feature that "doesn't
+work", count its input records.*
+
+**5. `AskUserQuestion` was already arriving — disguised as a permission.** Claude Code's
+multiple-choice question comes through the `PermissionRequest` gate as an ordinary permission
+whose **body is the tool's JSON payload** — question, options, descriptions, all already on disk,
+and all thrown away in favour of a bare "Approve this?" card. New `app/src/ask-card.js` parses it
+into a readable card (question + option labels) and a long-form email (options *with*
+descriptions), which is what finally exercised the email channel. Cards cap at 3500 chars
+(real limit 4096) measured on the **assembled** string — summing the fixed parts miscounts the
+`join('\n')` separators, and over the cap the send fails and the card is lost.
+**Hard limit, don't fight it:** `PermissionRequest` returns allow/deny only, so a tapped option
+*cannot* answer the question — approving means "let it render at my desk". Answer-from-phone is
+what the blocking, file-mediated `verqury-ask` skill is for.
+
+**6. Editable task bodies + an `idea` lane** (`core/src/schema.js`) — a task can be jotted as a
+one-liner and fleshed out over several sittings, so a fix list lives in the app instead of a
+notes file. Immediately load-bearing: Gary filed the next three ideas (Time Tracker, Token
+Tracker, Lines of Code Counter) straight into the `idea` lane on 2026-08-07.
+
+Gotchas in engineering-notes **§10** (terminal) and **§11** (question relay).
+
+### 2026-08-07 — Docs backfill (hygiene session, Opus 5)
+
+The 0.6.2 session shipped code, CHANGELOG, and eng-notes §10–11 but never wrote its PROGRESS
+entry or refreshed SESSION_STATE — so the notebook claimed v0.6.1 was still awaiting a push
+while the repo, the tag, the GitHub release, and the installed launcher were all at **v0.6.2**.
+Backfilled the entry above from the commit range + eng-notes, re-verified state (78 tests green,
+tags pushed, release assets present, installed md5 matches), and rewrote SESSION_STATE.md.
+**Process note:** a release cut isn't done when the tag lands — PROGRESS.md is the only place
+the *reasoning* survives, and it's the one artifact a shipping session is most likely to skip.
