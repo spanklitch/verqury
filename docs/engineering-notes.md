@@ -368,3 +368,74 @@ makes `createWindow(false)` start the app in the tray without showing a window.
   stale merged branches (`git push origin --delete <b>`), then verify with a fresh `git clone
   --mirror` that the blob hashes are absent from every ref. (Same gotcha bit the email purge.)
   GitHub may still serve an unreachable blob by SHA until GC — low residual risk for non-secret PII.
+
+## 10. Terminal tabs: focus, drops, and colors (2026-08-06)
+
+- **A repaint on the bell silently killed the keyboard.** *Symptom:* typing in one terminal
+  tab, another tab finishes and rings BEL — and from that moment keystrokes go nowhere until
+  you click back into the terminal. It looked like the bell was "stealing" focus or switching
+  tabs. *Cause:* neither. `onBell` called the terminal's full `render()`, which does
+  `host.replaceChildren(tabStrip(), toolbar, active.wrap)`. **Detaching a DOM node moves focus
+  out of anything inside it** — here, the active session's xterm helper textarea — and
+  `render()` never re-focuses (only `setActive` does). The active tab never changed; only
+  focus was lost, which is why clicking the *current* tab appeared to "fix" it. *Fix:* a bell
+  repaints **only the tab strip** (`repaintTabs()` swaps the `.term-tabs` node), never the
+  active session's container. *Rule of thumb:* any repaint that can run while the user is
+  typing must not touch the subtree holding focus. Guarded by VERQURY_VERIFY **block 15**
+  (`bellKeepsFocus`), which was confirmed to go **false** against the old code before the fix
+  was kept — a regression guard nobody has watched fail is not a guard.
+
+- **`stopPropagation` in a child can strand global drag state.** *Symptom:* dragging a file
+  onto the embedded terminal left the dashed "Drop to capture into the active project"
+  overlay on screen permanently — everything else kept working, but only a restart cleared
+  it. *Cause:* the overlay is toggled by document-level `dragenter`/`dragleave`/`drop`
+  listeners on the **bubble** phase, and the terminal's own `drop` handler calls
+  `e.stopPropagation()` — so the document handler that resets the counter and removes the
+  class never ran. *Fix:* register the cleanup in the **capture** phase
+  (`addEventListener('drop', endDrag, true)`), which fires top-down before any child can
+  swallow the event, plus a `dragend` listener for a drag abandoned outside the window. The
+  overlay also no longer claims the terminal area (`closest('.term-host')`), because a drop
+  there means something different. *Rule of thumb:* global UI state cleared by a bubble-phase
+  listener is one `stopPropagation` away from being stuck forever.
+
+- **Electron 41 removed `File.path`.** A dropped file's real path must come from
+  `webUtils.getPathForFile(file)`, exposed through the preload bridge (`pathForFile`). Checked
+  against the installed `electron.d.ts`, not memory — `File.path` is gone, and reading it just
+  yields `undefined`, so a file drop silently does nothing. Drop sources are tried in order:
+  real files → `text/uri-list` (`file://` decoded) → `text/plain`; paths are shell-quoted so
+  spaces survive.
+
+- **Tab colors are claimed, not positional.** A tab keeps its color for its whole life and a
+  closed tab's color returns to the pool (`claimColor()` picks the lowest unused). Positional
+  coloring would re-color surviving tabs whenever a neighbour closed, which defeats the point
+  — the color exists to build muscle memory for "the build is in the purple one".
+
+## 11. Relaying an agent's question (2026-08-06)
+
+- **The email channel had never fired — no input existed.** *Symptom:* Phase C's escalating
+  email was fully configured (to/from/host/port + app password) and never sent a single mail.
+  *Cause:* `maybeEmailQuestion` requires `kind === 'question'`, and only the `verqury-ask`
+  skill creates those records. Across **347** approval records there were **zero** — no agent
+  had ever invoked the skill. The feature wasn't broken; it had no trigger. *Lesson:* before
+  debugging a feature that "doesn't work", check whether its input has ever existed — count
+  the records.
+
+- **`AskUserQuestion` was already arriving, disguised as a permission.** Claude Code's
+  multiple-choice question comes through the `PermissionRequest` gate as an ordinary
+  permission record whose **body is the tool's JSON payload** — every question, every option,
+  every description already on disk. It was relayed as a bare "Approve this?" card, so the
+  phone couldn't say what was being asked and you had to walk back to the terminal. *Fix:*
+  `app/src/ask-card.js` parses the payload and builds a readable card (question text + option
+  labels) plus a long-form email (options **with** descriptions).
+
+- **Hard limit — the gate cannot carry an answer.** `PermissionRequest` returns
+  `decision.behavior` **allow/deny only** (§7); there is no channel to hand a chosen option
+  back to the tool. So a tapped option *cannot* answer an `AskUserQuestion` — approving only
+  means "let the question render at my desk". Reading on the phone is the achievable win;
+  true answer-from-phone is exactly what the file-mediated, blocking `verqury-ask` skill
+  exists for. Don't try to make the gate do it.
+
+- **Telegram's text cap needs measuring, not estimating.** Cards are capped at 3500 chars
+  (real limit 4096) and truncated by measuring the **assembled** string, not by summing its
+  fixed parts — the `join('\n')` separators are trivial to miscount, and a first attempt
+  overshot by exactly one character. Over the cap, the send fails and the card is lost.

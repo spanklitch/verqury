@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Per-tab colors in the terminal.** Each tab claims a color for its lifetime (blue,
+  yellow, purple, green, white, red) and wears it as a left bar, so tabs are told apart at
+  a glance. Closing a neighbour never re-colors a tab; a closed tab's color returns to the
+  pool.
+- **Bell blink.** A background tab that rings BEL now blinks in its own color until you
+  click it — it still never navigates away or takes your keyboard. Motion-sensitive users
+  get a steady high-contrast state instead (`prefers-reduced-motion`).
+- **Drop a file into the terminal to type its path**, the way a plain terminal does.
+  Multiple files are shell-quoted and space-separated; a dragged link pastes verbatim.
+- **Editable task bodies + an `idea` route.** A task can now be written and revised in
+  place — jot a fix or feature as a one-liner and flesh it out over several sittings, then
+  send it on with the existing hand-off. The new `idea` lane holds what isn't worked out
+  yet.
+- **AskUserQuestion reaches the phone readable.** When an agent asks a multiple-choice
+  question, the relay card now carries the question text and the option labels instead of a
+  bare "Approve this?", and the full options with their descriptions are emailed when they
+  are too long for a card — the first real-world path that exercises the Phase C email
+  channel. Note the gate contract is unchanged: `PermissionRequest` is allow/deny only, so
+  approving means *"let me answer at my desk"*; answering from the phone remains the
+  `verqury-ask` skill's job.
+
+### Fixed
+- **A bell in a background tab no longer kills your keyboard.** Ringing a tab called the
+  full renderer repaint, whose `replaceChildren` detached and re-appended the *active*
+  session's container — dropping focus out of its xterm textarea, so typing went nowhere
+  until you clicked back into the terminal. A bell now repaints only the tab strip.
+  (It never switched tabs; only focus was lost.) Guarded by VERQURY_VERIFY block 15.
+- **The drag-and-drop overlay no longer latches on.** Dragging onto the terminal left the
+  dashed "Drop to capture" overlay stuck until the app was restarted: the terminal's drop
+  handler calls `stopPropagation`, which prevented the document-level handler that clears
+  the overlay from ever running. Cleanup now runs in the capture phase (plus on `dragend`),
+  and the overlay no longer claims the terminal area at all.
+
 ## [0.6.1] - 2026-08-06
 
 ### Added
