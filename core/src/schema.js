@@ -9,7 +9,9 @@ export const GUIDANCE_KINDS = ['skill', 'standard', 'instruction', 'template'];
 export const DECISION_STATUSES = ['proposed', 'accepted', 'superseded'];
 export const ARTIFACT_KINDS = ['prompt', 'command', 'snippet', 'report', 'note', 'url'];
 export const ARTIFACT_SOURCES = ['clipboard', 'manual', 'report'];
-export const TASK_ROUTES = ['direct', 'automation', 'browser-agent', 'human'];
+// 'idea' is the holding lane: a fix or feature jotted down before it's worked out.
+// It leaves the lane by being re-routed once it's fleshed out enough to hand off.
+export const TASK_ROUTES = ['idea', 'direct', 'automation', 'browser-agent', 'human'];
 export const TASK_STATUSES = ['todo', 'handed-off', 'in-progress', 'done', 'dropped'];
 
 export function assertEnum(value, allowed, label) {

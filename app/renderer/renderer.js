@@ -559,8 +559,20 @@ function renderTaskDetail(t, artifacts) {
     resumeAdapterSel.append(o);
   }
 
-  const body = h('pre', { class: 'artifact-body' });
-  body.textContent = t.body ?? '';
+  // Editable, so a task can start as a one-line idea and get fleshed out in place over
+  // several sittings — then leave via the existing hand-off. Same click-to-edit editor
+  // as the project narrative; updateTask already accepts a body patch.
+  const body = h('div', { class: 'editable' });
+  editableMarkdown(
+    body,
+    () => t.body ?? '',
+    async (val) => {
+      await window.verqury.updateTask(t.project, t.id, { body: val });
+      t.body = val;
+      toast('Saved');
+      await refreshTasks();
+    },
+  );
 
   const handoff = h('button', { class: 'btn primary', onclick: async () => {
     await window.verqury.handoffTask(t.project, t.id);
