@@ -966,6 +966,24 @@ async function runVerify(outDir) {
     await dom(`[...document.querySelectorAll('.term-tab .term-tab-label')].find(l=>l.textContent.includes('${slug} · echo')).click()`);
     await wait(200);
     result.terminalBellCleared = await dom(`(()=>{const t=[...document.querySelectorAll('.term-tab')].find(x=>x.textContent.includes('${slug} · echo'));return !!t && !t.classList.contains('attention');})()`);
+
+    // (15) A bell in a BACKGROUND tab must not disturb the tab you are typing in.
+    // Regression guard: onBell used to call the full render(), whose replaceChildren
+    // detached and re-appended the active session's container — dropping focus out of
+    // its xterm textarea, so the keyboard went dead mid-sentence until you clicked back.
+    // Focus the active terminal, ring the OTHER tab, and assert focus never moved and
+    // the active tab never changed.
+    await dom("document.querySelector('.term-host .xterm-helper-textarea')?.focus()");
+    await wait(100);
+    const focusedBefore = await dom("!!document.activeElement?.closest('.term-host')");
+    const activeLabelBefore = await dom("document.querySelector('.term-tab.active .term-tab-label')?.textContent || ''");
+    await dom("window.__verquryTerm.ringBellForTest('shell:1')"); // the other (background) tab
+    await wait(250);
+    result.bellKeepsFocus = focusedBefore && (await dom("!!document.activeElement?.closest('.term-host')"));
+    result.bellKeepsActiveTab = activeLabelBefore === (await dom("document.querySelector('.term-tab.active .term-tab-label')?.textContent || ''"));
+    result.bellMarksOtherTab = await dom("[...document.querySelectorAll('.term-tab')].some(t=>t.classList.contains('attention'))");
+    // Every open tab carries its own distinct color (set as --tab-color in terminal.js).
+    result.tabColorsDistinct = await dom("(()=>{const c=[...document.querySelectorAll('.term-tab')].map(t=>t.style.getPropertyValue('--tab-color').trim()).filter(Boolean);return c.length>1 && new Set(c).size===c.length;})()");
     // Navigate away and back — both sessions persist.
     await dom("document.querySelector('.tab[data-mode=projects]').click()");
     await wait(300);

@@ -1,6 +1,6 @@
 // Preload bridge (CommonJS, runs in the sandboxed isolated world). Exposes a
 // small, explicit API to the renderer — no Node, no ipcRenderer leakage.
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('verqury', {
   getRoot: () => ipcRenderer.invoke('root:get'),
@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('verqury', {
   readClipboard: () => ipcRenderer.invoke('clipboard:read'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   appVersion: () => ipcRenderer.invoke('app:version'),
+  // Real filesystem path of a dropped File. Electron 41 removed File.path, so this
+  // is the only way to turn a drag-and-dropped file into a path for the terminal.
+  pathForFile: (file) => webUtils.getPathForFile(file),
 
   artifactKinds: () => ipcRenderer.invoke('artifact:kinds'),
   listArtifacts: (filters) => ipcRenderer.invoke('artifacts:list', filters),

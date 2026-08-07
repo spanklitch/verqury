@@ -78,12 +78,27 @@ themeBtn.addEventListener('click', () => {
 // app to capture it into the active project — no copy/paste needed.
 let dragDepth = 0;
 const isField = (node) => node && (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA');
+// The terminal owns its own drops (a dropped file types its PATH there), so the
+// capture overlay must not claim that area.
+const overTerminal = (node) => !!(node && node.closest && node.closest('.term-host'));
+function endDrag() {
+  dragDepth = 0;
+  document.body.classList.remove('dragging');
+}
+// Cleanup runs in the CAPTURE phase: the terminal's own drop handler calls
+// stopPropagation, which used to stop the bubbling cleanup below from ever running —
+// so the dashed "Drop to capture" overlay latched on until the app was restarted.
+// Capture fires top-down before any child can swallow the event, and `dragend` covers
+// a drag abandoned outside the window.
+document.addEventListener('drop', endDrag, true);
+document.addEventListener('dragend', endDrag, true);
 document.addEventListener('dragover', (e) => {
-  if (isField(e.target)) return; // let form fields handle their own drops
+  if (isField(e.target) || overTerminal(e.target)) return; // those handle their own drops
   const types = e.dataTransfer ? [...e.dataTransfer.types] : [];
   if (types.includes('text/plain') || types.includes('text/uri-list')) e.preventDefault();
 });
-document.addEventListener('dragenter', () => {
+document.addEventListener('dragenter', (e) => {
+  if (overTerminal(e.target)) return;
   dragDepth += 1;
   document.body.classList.add('dragging');
 });
@@ -92,9 +107,8 @@ document.addEventListener('dragleave', () => {
   if (dragDepth <= 0) document.body.classList.remove('dragging');
 });
 document.addEventListener('drop', async (e) => {
-  dragDepth = 0;
-  document.body.classList.remove('dragging');
-  if (isField(e.target)) return; // dropped into a form field — native insert
+  endDrag();
+  if (isField(e.target) || overTerminal(e.target)) return; // handled by the field / terminal
   const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
   if (!text || !text.trim()) return;
   e.preventDefault();

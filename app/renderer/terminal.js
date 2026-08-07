@@ -19,6 +19,15 @@ window.verqury.onPtyExit(({ id }) => {
 
 const THEME = { background: '#0e1220', foreground: '#e9edf8', cursor: '#7f95ff' };
 
+// Per-tab accent colors so tabs are told apart at a glance. A color is claimed when
+// a tab is created and held for that tab's whole life (closing a neighbour never
+// re-colors it — the point is muscle memory); a closed tab's color returns to the pool.
+const TAB_COLORS = ['#5b8cff', '#f2c14e', '#a97bff', '#4fc98a', '#e8ecf7', '#ef5f6b']; // blue, yellow, purple, green, white, red
+function claimColor() {
+  const used = new Set([...sessions.values()].map((s) => s.color));
+  return TAB_COLORS.find((c) => !used.has(c)) || TAB_COLORS[sessions.size % TAB_COLORS.length];
+}
+
 // Bell / attention: when a session's CLI writes BEL (\x07) — the standard "I want
 // your attention" signal, e.g. an agent finishing and awaiting input — beep, glow
 // its tab (if it isn't the one you're looking at), and nudge the OS if we're hidden.
@@ -64,7 +73,12 @@ function onBell(id) {
   const s = sessions.get(id);
   if (!s) return;
   beep();
-  if (id !== activeId) { s.attention = true; if (host) render(); } // mark which tab wants you
+  // Repaint ONLY the tab strip. A full render() calls replaceChildren, which detaches
+  // and re-appends the ACTIVE session's container — and detaching a node drops focus
+  // out of the xterm textarea inside it, so a bell in a background tab silently killed
+  // the keyboard in the tab you were typing in until you clicked back. The bell must
+  // never touch the active tab's DOM: it marks the ringing tab and nothing else.
+  if (id !== activeId) { s.attention = true; repaintTabs(); }
   window.verqury.terminalNotify(s.label); // main only shows it if Verqury is hidden
 }
 
@@ -72,6 +86,30 @@ function syncActive() {
   const s = sessions.get(activeId);
   if (!s) return;
   try { s.fit.fit(); window.verqury.ptyResize(activeId, s.term.cols, s.term.rows); } catch { /* not laid out yet */ }
+}
+
+// Dropping a file onto the terminal should type its PATH, the way a plain terminal
+// does — not capture the file. Sources, in order: real files (Electron 41 removed
+// File.path, so the path comes from webUtils.getPathForFile via preload), then a
+// file:// uri-list, then plain text. Paths are shell-quoted so spaces survive.
+const shellQuote = (p) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(p) ? p : `'${p.replace(/'/g, "'\\''")}'`);
+const fileUrlToPath = (u) => { try { return decodeURIComponent(new URL(u).pathname); } catch { return null; } };
+
+function droppedText(dt) {
+  if (!dt) return '';
+  const files = [...(dt.files || [])]
+    .map((f) => { try { return window.verqury.pathForFile(f); } catch { return null; } })
+    .filter(Boolean);
+  if (files.length) return files.map(shellQuote).join(' ');
+
+  const uris = (dt.getData('text/uri-list') || '')
+    .split(/\r?\n/)
+    .filter((l) => l && !l.startsWith('#'));
+  const paths = uris.filter((u) => u.startsWith('file://')).map(fileUrlToPath).filter(Boolean);
+  if (paths.length) return paths.map(shellQuote).join(' ');
+  if (uris.length) return uris.join(' '); // a dragged http(s) link — paste it verbatim
+
+  return dt.getData('text/plain') || '';
 }
 
 // Create a session's xterm + container and start its PTY. Does not change the active tab.
@@ -101,12 +139,12 @@ function makeSession(id, label, { cwd } = {}) {
   wrap.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
   wrap.addEventListener('drop', (e) => {
     e.preventDefault(); e.stopPropagation();
-    const t = e.dataTransfer.getData('text/plain');
-    if (t) window.verqury.ptyInput(id, t);
+    const text = droppedText(e.dataTransfer);
+    if (text) window.verqury.ptyInput(id, text);
   });
   new ResizeObserver(() => { if (id === activeId) syncActive(); }).observe(wrap);
 
-  const s = { term, fit, wrap, label, exited: false, ready: window.verqury.ptyStart(id, { cwd }) };
+  const s = { term, fit, wrap, label, color: claimColor(), exited: false, ready: window.verqury.ptyStart(id, { cwd }) };
   sessions.set(id, s);
   return s;
 }
@@ -172,12 +210,22 @@ function render() {
   host.replaceChildren(tabStrip(), toolbar, active.wrap); // moves the persistent container into view
 }
 
+// Swap just the tab strip in place, leaving the active session's container (and the
+// focus inside it) untouched. Falls back to a full render if the strip isn't mounted.
+function repaintTabs() {
+  if (!host) return;
+  const mounted = host.querySelector('.term-tabs');
+  if (mounted) mounted.replaceWith(tabStrip());
+  else render();
+}
+
 function tabStrip() {
   const strip = document.createElement('div');
   strip.className = 'term-tabs';
   for (const [id, s] of sessions) {
     const tab = document.createElement('div');
     tab.className = `term-tab${id === activeId ? ' active' : ''}${s.exited ? ' exited' : ''}${s.attention ? ' attention' : ''}`;
+    tab.style.setProperty('--tab-color', s.color);
     tab.title = s.label;
     const name = document.createElement('span');
     name.className = 'term-tab-label';

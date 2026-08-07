@@ -454,12 +454,23 @@ body.dragging::after {
 /* Embedded terminal */
 .detail.terminal-mode { max-width: none; height: 100%; padding: 8px; overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
 .term-tabs { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; flex: 0 0 auto; }
-.term-tab { display: flex; align-items: center; gap: 6px; max-width: 220px; padding: 4px 8px; border-radius: 7px; background: var(--panel); border: 1px solid var(--line); cursor: pointer; font-size: 12px; color: var(--ink-soft); }
-.term-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+/* Each tab claims a color for its lifetime (--tab-color, set in terminal.js) and wears
+   it as a left bar, so tabs are told apart at a glance without reading their labels. */
+.term-tab { display: flex; align-items: center; gap: 6px; max-width: 220px; padding: 4px 8px 4px 7px; border-radius: 7px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--tab-color, var(--line)); cursor: pointer; font-size: 12px; color: var(--ink-soft); }
+.term-tab.active { background: color-mix(in srgb, var(--tab-color, var(--accent)) 18%, var(--panel)); border-color: var(--tab-color, var(--accent)); color: var(--ink); }
 .term-tab.exited .term-tab-label { text-decoration: line-through; opacity: 0.6; }
-.term-tab.attention { border-color: var(--accent-2); color: var(--ink); animation: term-pulse 1.2s ease-in-out infinite; }
-.term-tab.attention .term-tab-label::before { content: '●'; margin-right: 5px; color: var(--accent-2); }
-@keyframes term-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 3px var(--accent-soft); } }
+/* Bell: blink in the tab's OWN color until you click it (setActive clears attention).
+   Never steals focus and never switches tabs — it only says "over here". */
+.term-tab.attention { border-color: var(--tab-color, var(--accent-2)); color: var(--ink); animation: term-blink 1s steps(1, end) infinite; }
+.term-tab.attention .term-tab-label::before { content: '●'; margin-right: 5px; color: var(--tab-color, var(--accent-2)); }
+@keyframes term-blink {
+  0%, 49% { background: color-mix(in srgb, var(--tab-color, var(--accent-2)) 38%, var(--panel)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tab-color, var(--accent-2)) 30%, transparent); }
+  50%, 100% { background: var(--panel); box-shadow: 0 0 0 0 transparent; }
+}
+/* Motion-sensitive users get a steady high-contrast state instead of a blink. */
+@media (prefers-reduced-motion: reduce) {
+  .term-tab.attention { animation: none; background: color-mix(in srgb, var(--tab-color, var(--accent-2)) 38%, var(--panel)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tab-color, var(--accent-2)) 30%, transparent); }
+}
 .term-tab-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .term-tab-close { background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; opacity: 0.55; }
 .term-tab-close:hover { opacity: 1; }
