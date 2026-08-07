@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-06
+
 ### Added
 - **Per-tab colors in the terminal.** Each tab claims a color for its lifetime (blue,
   yellow, purple, green, white, red) and wears it as a left bar, so tabs are told apart at
@@ -265,7 +267,8 @@ and a config-driven adapter registry.
 - Renamed product Velora → **Verqury** (prior name in use by another company);
   applies to package names, CLI command, data root, and all docs.
 
-[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/spanklitch/verqury/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/spanklitch/verqury/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/spanklitch/verqury/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/spanklitch/verqury/compare/v0.5.0...v0.5.1

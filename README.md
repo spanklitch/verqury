@@ -7,7 +7,7 @@ memory, reusable guidance, captured artifacts, session bootstrapping, and task
 routing, from first concept through build, release, and marketing.
 
 - **Platform:** Linux x64 (X11) desktop — Node 20 + Electron shell, plain-JS renderer
-- **Status:** **v0.6.1** (2026-08-06) — the **remote decision relay** is complete: approve permission prompts by tap and answer a build's clarifying questions from your phone (Telegram, with long context by email), on the v0.3.0 multi-tab terminal workbench base. Settings now deep-links to the [verqury.com](https://verqury.com) web companion. Packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
+- **Status:** **v0.6.2** (2026-08-06) — color-coded terminal tabs that blink (not steal focus) when a build rings the bell, file-drop-to-path in the terminal, editable task bodies with an `idea` lane, and an agent's multiple-choice questions relayed to your phone readable. On the complete **remote decision relay** (approve by tap; long context by email) and the v0.3.0 multi-tab terminal workbench. Packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
 - **Publisher:** [FlawedWorks](https://flawedworks.com)
 
 > Verqury is a workflow layer, not an IDE — and deliberately not a chat interface,
