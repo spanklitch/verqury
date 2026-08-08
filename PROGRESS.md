@@ -17,6 +17,7 @@ verify success criteria, update this file.
 - [x] **Phase 8 — Packaging, docs, release prep** (2026-07-08 — AppImage built + verified running; only v0.1.0 tag + push remain)
 - [x] **Remote decision relay — Phase A** (2026-07-14 — Here/Away + Telegram notify hook; code+harness verified, live phone verified)
 - [x] **Remote decision relay — Phase B** (2026-07-15 — approve-by-tap: PermissionRequest gate + Approval inbox + app Telegram round-trip; **LIVE-PHONE-VERIFIED**; shipped v0.5.0, then **v0.5.1** relay de-dup; 0.5.1 AppImage built + launcher repointed + hooks installed/registered)
+- [x] **Project instrumentation — slice 1** (2026-08-07 — ADR-0013 + transcript harvester + build-time meter; **shipped v0.6.3** with the two carried UX fixes. LOC deferred to an OTel slice.)
 - [x] **Remote decision relay — Phase C** (2026-07-15 — `verqury-ask` skill + question inbox + escalating email context + typed-reply channel; 70 tests + lint + harness block 13 green; **SHIPPED v0.6.0 + LIVE-PHONE+EMAIL-VERIFIED**. Relay initiative COMPLETE (A→C).)
 
 ## Open questions (plan §7)
@@ -822,3 +823,51 @@ OS shortcut, which is how you tell it apart from a regression.
 possible), but the slice is source-only and 0.6.3 should batch with whatever comes next.
 
 Gotchas in engineering-notes **§12**.
+
+### 2026-08-07 — v0.6.3: the meter ships, and the relay stops stalling (release session, Opus 5)
+
+Second stretch of the same day, taken deliberately against the one-phase-per-session rule (Gary
+had time and waived it knowingly). Picked the **two UX items carried since the 0.6.1 cut** over
+opening the LOC/OTel initiative — they were already diagnosed, so this was implementation rather
+than design, and they turned a thin "we added a meter" release into a substantive one.
+
+**1. The nine-minute stall (the real bug).** With presence Away the `PermissionRequest` gate
+engaged unconditionally — but the pending record's only consumer is the **app** (the single
+Telegram `getUpdates` owner). App closed ⇒ no card sent, no tap read, so **every** permission
+request blocked for the full ~9-minute self-expire before the desk prompt appeared. The old hook
+comment called this "expires to the desk: safe"; it was safe and unusable. Worse, it *looked*
+healthy: the notify hook is app-independent and kept buzzing about other events, so the relay
+seemed alive. **A working outbound leg is not evidence of a working inbound one.**
+*Fix:* `core/src/runtime.js` — the app writes `<root>/runtime/app.json` (`{pid, updated}`) every
+30 s and clears it on quit; the dependency-free hook re-reads it (cross-reader test, same contract
+as `approvals.js`). Liveness is checked **last** so `here`/`disabled`/`no-token` remain the
+reported reason when they apply. Timestamp **and** pid are both checked — a stale beat catches a
+wedged app, `process.kill(pid,0)` catches a `kill -9` instantly. Heartbeat lives outside the
+watched markdown tree, so beats can't spin the watcher or the FTS refresh (pinned by a test).
+
+**2. Closing ≠ quitting.** Tray residency is design principle #4, but an instance once ran 7d20h
+unnoticed. Now a one-time notification (persisted as `closeHintShown`) plus a permanent tray
+tooltip. Once, not every close — a nag trains you to ignore it.
+
+**Released 0.6.3.** `npm version --workspaces --include-workspace-root` (root+core+app+lockfile in
+one shot), CHANGELOG `[Unreleased]` → `[0.6.3]`, and the **public README status line** refreshed —
+the same stale-status trap that forced the 0.6.1 cut. Built AppImage + .deb **backgrounded**.
+
+**Verified.** **96 tests** (69 core + 27 app) + lint + secret/PII grep clean. Harness **77/78 in
+dev** (new: `permHookNeedsRunningApp`, `permHookRelaysWhenAppUp`, `closeHintOnce`, plus the four
+meter checks) and **63/64 against the packaged AppImage** (`aboutVersionShown` true, meter renders
+in the packaged build). The lone false in both is `hotkeyRegistered` — the installed tray-resident
+instance holds the global `Control+Alt+C`.
+
+**Two gotchas worth the ink:**
+- **Upgrade order is load-bearing: app first, then hook.** `~/.claude/hooks/` holds *copies* and
+  `install-desktop.sh` does **not** install them (it never has). The new hook expects a heartbeat
+  only ≥0.6.3 writes — paired with an older app it reads `app-not-running` every time and stops
+  relaying entirely. Fails safe, fails silent: the exact bug class this release removed.
+- **`pgrep -f "electron-builder"` matches your own waiter.** A wait-loop whose command line
+  contains the pattern never terminates, because it finds itself. The build had finished ~25 min
+  earlier; only the loop was stuck. Exclude `bash -c`, or match the real process another way.
+
+**Deviations:** launcher NOT repointed and hooks NOT installed in-session — `install-desktop.sh`
+overwrites `~/Applications/Verqury.AppImage`, which was mounted and running (ETXTBSY). Needs Gary
+to Quit from the tray first. Gotchas in engineering-notes **§13**.
