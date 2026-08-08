@@ -490,3 +490,41 @@ makes `createWindow(false)` start the app in the tray without showing a window.
   so the harness reports false. Not a regression — confirm by checking that
   `captureFiledArtifact`/`captureRoundTrips` still pass, since they exercise the same capture
   path without the OS shortcut.
+
+## 13. App liveness: the gate must know whether anyone is listening (2026-08-07)
+
+- **The bug was a nine-minute stall, not a missing feature.** With presence Away, the
+  `PermissionRequest` gate filed a record and blocked, but the record's only consumer is the
+  **app** (the single Telegram `getUpdates` owner, §7). App closed ⇒ no card sent, no tap read,
+  so every permission rode the full ~9-min self-expire before the desk prompt appeared. The old
+  hook comment called this "expires to the desk: safe" — safe, but unusable.
+
+- **Why it read as healthy.** The relay's legs are independent: the **notify** hook POSTs to
+  Telegram itself and needs no app, so completion pings kept arriving on the phone while every
+  permission silently stalled. A working outbound leg is not evidence of a working inbound one.
+  When diagnosing the relay, always ask which leg you're looking at.
+
+- **Liveness is a file, like everything else (ADR-0001).** The app writes
+  `<root>/runtime/app.json` (`{pid, updated}`) every 30 s and deletes it on quit;
+  `core/src/runtime.js` reads it. Deliberately **outside** the watched markdown tree — the
+  watcher only schedules on `.md` under `projects/`, `guidance/`, `approvals/`, so a beat every
+  30 s can't spin the UI or the FTS refresh. A unit test pins that placement.
+
+- **Check the timestamp AND the pid; each covers the other's blind spot.** A stale timestamp
+  catches an app that wedged without cleaning up; `process.kill(pid, 0)` catches a `kill -9`
+  *instantly* instead of waiting out the 90 s window. `EPERM` counts as alive (the pid exists,
+  it just isn't ours). 90 s = three missed beats: long enough not to libel a busy app.
+
+- **Order the liveness check LAST in the gate.** `disabled` / `here` / `no-chat-id` / `no-token`
+  are all better explanations to report than `app-not-running`, and a test pins the precedence.
+
+- **UPGRADE ORDER IS LOAD-BEARING: app first, then hook.** `~/.claude/hooks/` holds *copies*,
+  and `scripts/install-desktop.sh` does **not** install them — it never has. The new hook expects
+  a heartbeat only ≥0.6.3 writes, so pairing it with an older app makes every gate read
+  `app-not-running` and the relay stops relaying entirely. It fails safe (everything goes to the
+  desk) but it fails silently, which is exactly the class of bug this release set out to remove.
+
+- **The close hint is once, on purpose.** Tray residency is design principle #4, but an instance
+  once ran 7d20h unnoticed. A notification on every close would train you to ignore it, so the
+  hint is persisted as `closeHintShown` in `config.json` and shown once; the permanent statement
+  lives in the tray tooltip, where it costs nothing.

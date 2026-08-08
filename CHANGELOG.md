@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-07
+
 ### Added
 - **A build-time meter on every project.** Verqury now reads the transcripts Claude Code
   already leaves on disk and turns them into one durable record per session, so a project
@@ -17,11 +19,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Wall-clock time and the raw token counters stay one hover away.
 - **`verqury session harvest|list|metrics`** on the CLI, for the same numbers without the app.
 
+### Fixed
+- **A quit Verqury no longer stalls every permission for nine minutes.** With presence set to
+  Away, the gate used to relay a permission request whether or not the app was running — but the
+  app is the only thing that sends the card and reads your tap, so with it closed the request sat
+  there until the ~9-minute expiry before falling back to the desktop prompt. Every prompt. And
+  because the notify hook needs no app, your phone kept buzzing about other events, so the relay
+  looked perfectly alive. The gate now checks a liveness heartbeat and falls back to the desk
+  **immediately** when nothing is there to answer.
+- **Closing the window says so.** Verqury stays resident in the tray by design, which is easy to
+  forget — one instance ran for over seven days unnoticed. Closing the window now tells you once
+  that it's still running, and the tray tooltip says it permanently.
+
 ### Notes
 - Session records are plain markdown under `projects/<slug>/sessions/`, like everything else
   (ADR-0001) — once harvested, the numbers are yours and survive any change upstream.
 - Sessions are matched to a project by its `repo` path, so a project needs one to be measured.
   Sessions run from a subdirectory of the repo count too.
+- **Upgrade order matters:** install the app **before** copying the updated
+  `hooks/verqury-permission.cjs` into `~/.claude/hooks/`. The new hook expects the heartbeat that
+  only this version writes; paired with an older app it would read "not running" every time and
+  stop relaying altogether (safely — every prompt would go to the desk).
 
 ## [0.6.2] - 2026-08-06
 

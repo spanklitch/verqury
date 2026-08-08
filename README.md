@@ -7,7 +7,7 @@ memory, reusable guidance, captured artifacts, session bootstrapping, and task
 routing, from first concept through build, release, and marketing.
 
 - **Platform:** Linux x64 (X11) desktop — Node 20 + Electron shell, plain-JS renderer
-- **Status:** **v0.6.2** (2026-08-06) — color-coded terminal tabs that blink (not steal focus) when a build rings the bell, file-drop-to-path in the terminal, editable task bodies with an `idea` lane, and an agent's multiple-choice questions relayed to your phone readable. On the complete **remote decision relay** (approve by tap; long context by email) and the v0.3.0 multi-tab terminal workbench. Packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
+- **Status:** **v0.6.3** (2026-08-07) — a **build-time meter** on every project, harvested from the session transcripts your AI CLI already leaves on disk, so it backfills real history instead of starting at zero ([ADR-0013](docs/adr/0013-session-metrics-harvested-from-transcripts.md)); plus a relay that fails fast instead of stalling nine minutes when the app isn't running, and a window that admits it's still in the tray. On the complete **remote decision relay** (approve by tap; long context by email), color-coded terminal tabs, and the v0.3.0 multi-tab terminal workbench. Packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
 - **Publisher:** [FlawedWorks](https://flawedworks.com)
 
 > Verqury is a workflow layer, not an IDE — and deliberately not a chat interface,

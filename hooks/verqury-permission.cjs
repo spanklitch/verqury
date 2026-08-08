@@ -21,7 +21,12 @@
 // Dependency-free (node builtins only); does NOT import verqury-core. It writes the
 // pending approval record straight to <root>/approvals/ and polls that file — the
 // Verqury app (single Telegram owner) sends the card and writes the tapped answer.
-// If the app is closed, no card is sent and this simply expires to the desk: safe.
+//
+// Because that consumer is the APP, the gate also requires the app to be running
+// (liveness heartbeat, see appRunning below). It used to engage regardless and
+// "expire to the desk: safe" — safe, but it cost NINE MINUTES per prompt with
+// nothing on the phone to answer, while the app-independent notify hook kept
+// buzzing about other events so the relay still looked alive. Fail fast instead.
 //
 // Test/override env vars:
 //   VERQURY_DATA_ROOT          data root (default ~/FlawedWorks/verqury)
@@ -72,15 +77,44 @@ function tokenPresent() {
   }
 }
 
+// Is the Verqury app actually running to consume this? Mirrors core/src/runtime.js
+// (kept in lock-step by a cross-reader test) — the hook stays dependency-free, so it
+// re-reads the heartbeat file rather than importing core.
+const HEARTBEAT_STALE_MS = Number(process.env.VERQURY_HEARTBEAT_STALE_MS) || 90 * 1000;
+
+function appRunning(root) {
+  let hb;
+  try {
+    hb = JSON.parse(fs.readFileSync(path.join(root, 'runtime', 'app.json'), 'utf8'));
+  } catch {
+    return false;
+  }
+  const updated = Date.parse((hb && hb.updated) || '');
+  if (Number.isNaN(updated) || Date.now() - updated > HEARTBEAT_STALE_MS) return false;
+  const pid = hb.pid;
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0); // existence check; delivers no signal
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM'; // alive, just not ours
+  }
+}
+
 // Should we relay this permission request, or let the desktop handle it? Only when
-// the owner is Away, notifications are on, a chat_id is set, and a token exists for
-// the app to send with. Any gap → desk prompt (return { engage: false, reason }).
-function gate(cfg) {
+// the owner is Away, notifications are on, a chat_id is set, a token exists for the
+// app to send with, AND the app is running to answer. Any gap → desk prompt
+// (return { engage: false, reason }).
+function gate(cfg, root) {
   const n = cfg.notify || {};
   if (n.enabled !== true) return { engage: false, reason: 'disabled' };
   if (n.presence !== 'away') return { engage: false, reason: 'here' };
   if (!(n.telegram && n.telegram.chatId)) return { engage: false, reason: 'no-chat-id' };
   if (!tokenPresent()) return { engage: false, reason: 'no-token' };
+  // Without the app there is no Telegram consumer: the card is never sent and the
+  // tap is never read, so engaging would stall the build for the full expiry with
+  // nothing on the phone to act on. Fall back to the desk NOW instead.
+  if (!appRunning(root)) return { engage: false, reason: 'app-not-running' };
   return { engage: true, reason: 'away' };
 }
 
@@ -163,8 +197,9 @@ function main() {
     payload = {};
   }
 
+  const root = dataRoot();
   const cfg = readConfig();
-  const g = gate(cfg);
+  const g = gate(cfg, root);
 
   if (!g.engage) {
     // Not relaying → emit nothing → the normal desktop permission dialog handles it.
@@ -174,7 +209,6 @@ function main() {
     return;
   }
 
-  const root = dataRoot();
   const cwd = payload.cwd ? String(payload.cwd) : null;
   const data = {
     id: genId(),

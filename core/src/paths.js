@@ -52,6 +52,13 @@ export function projectPaths(root, slug) {
   };
 }
 
+// Liveness heartbeat the running app writes. The PermissionRequest hook reads it to
+// tell "Verqury is away and will relay this" from "Verqury isn't running at all".
+// Deliberately OUTSIDE the watched markdown tree so beats never wake the watcher.
+export function heartbeatPath(root) {
+  return path.join(root, 'runtime', 'app.json');
+}
+
 // Where Claude Code writes its per-session transcripts (ADR-0013). Overridable so
 // tests can point at a fixture tree instead of the real one.
 export function transcriptsRoot(explicit) {

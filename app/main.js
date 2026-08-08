@@ -42,7 +42,7 @@ function ptyKill(id) {
   if (p) { try { p.kill(); } catch { /* already gone */ } ptys.delete(id); }
   return { id };
 }
-import { addLog } from 'verqury-core/files';
+import { addLog, writeHeartbeat, clearHeartbeat, readConfig, writeConfig } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
 import * as telegram from './src/telegram.js';
@@ -123,7 +123,23 @@ function createWindow(show = true) {
   // "Where we left off": nudge the renderer to refresh resume reminders each time
   // the window is brought to the foreground (tray-show or first open).
   win.on('show', () => { if (win && !win.isDestroyed()) win.webContents.send('app:shown'); });
+  // Closing the window does NOT quit (design principle #4) — say so, once, the first
+  // time it happens. An instance once ran 7d20h unnoticed because nothing ever did.
+  win.on('close', () => { if (tray) hintStillResident(); });
   return win;
+}
+
+// One-time nudge that Verqury is still alive in the tray. Persisted in config so it
+// is a one-off, not a nag; the tray tooltip carries the same fact permanently.
+function hintStillResident() {
+  try {
+    const cfg = readConfig(root);
+    if (cfg.closeHintShown) return;
+    writeConfig(root, { ...cfg, closeHintShown: true });
+    notify('Still running in the tray — open it from the tray icon, or Quit there to exit.');
+  } catch {
+    // Never let a hint break closing the window.
+  }
 }
 
 // Start-on-login is implemented the Linux way: a .desktop file in the user's
@@ -671,7 +687,8 @@ function setupTray() {
   try {
     const img = nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 });
     tray = new Tray(img);
-    tray.setToolTip('Verqury — layer, not IDE');
+    // States the residency plainly: closing the window leaves this running.
+    tray.setToolTip('Verqury — running in the tray (Quit here to exit)');
     tray.on('click', () => (win && !win.isDestroyed() ? win.show() : createWindow()));
     tray.setContextMenu(buildTrayMenu());
   } catch (err) {
@@ -935,6 +952,18 @@ async function runVerify(outDir) {
       await wait(100);
       const gatedHere = runPerm({ tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: root });
       result.permHookGatesWhenHere = gated.engage === true && gatedHere.engage === false && gatedHere.reason === 'here';
+      // Away but the app is CLOSED: nothing consumes the record, so the gate must
+      // decline at once rather than stall the build for the full ~9-min expiry.
+      await dom("window.verqury.setPresence('away')");
+      await wait(100);
+      clearHeartbeat(root);
+      const noApp = runPerm({ tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: root });
+      result.permHookNeedsRunningApp = noApp.engage === false && noApp.reason === 'app-not-running';
+      writeHeartbeat(root); // we are in fact running; restore before the beat interval would
+      const backUp = runPerm({ tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: root });
+      result.permHookRelaysWhenAppUp = backUp.engage === true;
+      await dom("window.verqury.setPresence('here')");
+      await wait(100);
     } else {
       result.permHookSkipped = 'packaged run — hooks/ not bundled; proven in dev + live';
     }
@@ -1053,6 +1082,14 @@ async function runVerify(outDir) {
     result.aboutVersionShown = await dom("(document.querySelector('.detail-sub')?.textContent||'').includes('Verqury v')");
     result.aboutSiteLink = await dom("[...document.querySelectorAll('.settings-link')].some(a=>a.getAttribute('href')==='https://verqury.com')");
 
+    // (17) Closing the window isn't quitting: the hint fires once and then stays
+    // quiet forever (a nag would be worse than the silence it replaces).
+    const hintBefore = readConfig(root).closeHintShown;
+    hintStillResident();
+    const hintAfter = readConfig(root).closeHintShown;
+    hintStillResident(); // second close: must not re-notify
+    result.closeHintOnce = !hintBefore && hintAfter === true && readConfig(root).closeHintShown === true;
+
     // (16) Build-time meter (ADR-0013): harvest a fixture transcript through the
     // preload bridge and assert the meter renders the harvested time, not a zero.
     // VERQURY_TRANSCRIPTS_ROOT is set by the harness runner to a throwaway tree.
@@ -1131,6 +1168,11 @@ app.whenReady().then(() => {
   setupWatcher();
   setupTray();
   setupHotkey();
+  // Liveness for the PermissionRequest gate: without a fresh beat the hook stops
+  // relaying and sends the prompt straight to the desk instead of stalling ~9 min.
+  const beat = () => { try { writeHeartbeat(root); } catch { /* non-fatal */ } };
+  beat();
+  setInterval(beat, 30000); // 3 beats inside the hook's 90s staleness window
   setInterval(pollClipboard, 1000); // clipboard-watch poll (no-op unless enabled)
   syncRelay(); // start the Telegram long-poll if the relay is configured (ADR-0011 Phase B)
   setInterval(reconcileApprovals, 30000); // periodic sweep: expiry nudges + missed events
@@ -1154,6 +1196,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('before-quit', () => {
   watcher?.close();
+  clearHeartbeat(root); // the gate falls back to the desk from the next prompt on
   for (const p of ptys.values()) { try { p.kill(); } catch { /* already gone */ } }
   ptys.clear();
 });
