@@ -871,3 +871,42 @@ instance holds the global `Control+Alt+C`.
 **Deviations:** launcher NOT repointed and hooks NOT installed in-session — `install-desktop.sh`
 overwrites `~/Applications/Verqury.AppImage`, which was mounted and running (ETXTBSY). Needs Gary
 to Quit from the tray first. Gotchas in engineering-notes **§13**.
+
+### 2026-08-08 (late 08-07) — v0.6.3 installed + verified; a second relay bug found
+
+**Install completed and verified end-to-end.** Repo, tag, GitHub release, installed AppImage
+(md5 `fad0d05c…`) and the updated hook are all 0.6.3. The gate was proven on the **real** data
+root in both directions: app down → `{engage:false, reason:"app-not-running"}` in **31 ms** with
+nothing filed (previously: 9 minutes and a record); app up → engages and files as designed.
+
+**Diagnosing "running but no tray icon."** Gary reported the tray icon missing while a process
+still showed. Findings worth keeping: the AppImage spawns a small **FUSE mount** process
+(`WCHAN fuse_dev_do_read`, ~1.7 MB) that is *not* the app — the real one is
+`/tmp/.mount_Verqur*/verqury-app` at ~96 MB. That instance was **healthy**, not wedged: 1038 CPU-
+seconds over 16 h and two ESTABLISHED :443 sockets (the Telegram long-poll). Only the tray icon
+was missing — `setupTray()` catches its own failure and continues, so a launch can end up resident
+with **no window and no tray icon at all**, unreachable. It returned on 0.6.3, so it is transient,
+not systematic. Uncomfortable corollary: the close-hint added hours earlier says "open it from the
+tray icon", which is useless in precisely that state. The panel-restart hypothesis was tested and
+**disproved** (panel up 9 days, app 16 h).
+
+**The pile of expired records turned out to be the diagnostic.** 484 approvals, **305 expired**,
+last human answer 2026-08-06 15:47 — presence had been left `away` at the desk, so every request
+relayed, went untapped, and burned the full 9 minutes. That aggregate is what made the stall's
+scale legible. **Anyone tempted to purge these should read that sentence twice.**
+
+**NEW BUG FOUND (filed to the `idea` lane, next session's target).** The ~9-minute self-expire
+lives **only inside the hook process**. If that process dies first — session ends, Ctrl+C, sleep,
+kill — the record stays `pending` **forever**; nothing else reaps it. Proven: two records from
+21:23/21:29 still `pending` ~6 h later. `reconcileApprovals` only *sends* cards and nudges and has
+**no expiry path**, so on app restart those zombies get **fresh Telegram cards** — phantom
+approvals for tool calls that finished hours ago. *Fix direction:* give expiry authority to the
+app (it outlives any hook); keep the hook's self-expire as the fast path, not the only path.
+Retention is a **separate** question and the answer is not "purge" — roll per-session relay counts
+into the `sessions/` record from ADR-0013, then prune detail past a window.
+
+**Correction worth recording:** an in-session claim of "17 blocked hook processes" was wrong —
+`pgrep -f` was matching its own command line again (the same trap that hung the build wait). The
+measured figure was **2 processes / 4.2 MB**; they do drain. Memory pressure was never the issue.
+
+**Deviations:** none. No code changed in this stretch — install, verification, and diagnosis only.
