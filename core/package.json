@@ -1,6 +1,6 @@
 {
   "name": "verqury-core",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Verqury core — file-first data layer, search index, and CLI",
   "license": "MIT",
   "type": "module",
