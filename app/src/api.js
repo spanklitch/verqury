@@ -59,6 +59,7 @@ import {
   answerQuestion,
   markEmailed,
   expireApproval,
+  sweepExpiredApprovals,
   listAdapters,
   getAdapter,
   addAdapter,
@@ -340,6 +341,11 @@ export function markQuestionEmailed(root, id) {
 }
 export function parkApproval(root, id) {
   return expireApproval(root, id);
+}
+// The app owns expiry (see sweepExpiredApprovals): a hook that died before its own timer
+// leaves a record pending forever, and it would be re-carded to the phone on every start.
+export function reapExpiredApprovals(root) {
+  return sweepExpiredApprovals(root);
 }
 
 // ---- SMTP app-password (ADR-0011, Phase C) ----

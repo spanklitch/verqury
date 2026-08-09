@@ -528,3 +528,37 @@ makes `createWindow(false)` start the app in the tray without showing a window.
   once ran 7d20h unnoticed. A notification on every close would train you to ignore it, so the
   hint is persisted as `closeHintShown` in `config.json` and shown once; the permanent statement
   lives in the tray tooltip, where it costs nothing.
+
+## 14. Expiry needs an owner that outlives the request (2026-08-09)
+
+- **A timer inside the requester is a fast path, never the authority.** Both writers count
+  their own window down in-process — the `PermissionRequest` hook at 9 min, the `verqury-ask`
+  skill at 20 — and that timer dies with the process. End the session, Ctrl+C, suspend or kill
+  it and the record it filed stays `pending` **forever**, because nothing else was ever
+  responsible for it. Proven on real data: two records filed 21:23 and 21:29 were still pending
+  43 hours later.
+
+- **The damage is deferred, which is why it hid.** `reconcileApprovals` had no expiry path at
+  all — it sends cards, nudges, and closes out resolved ones. So the zombies cost nothing until
+  the *next* app start, when they read as new pendings and drew **fresh Telegram cards**:
+  phantom approvals for tool calls that finished two days ago, where tapping accomplishes
+  nothing because no hook is polling the record any more.
+
+- **The fix is ownership, not a longer timer.** `sweepExpiredApprovals` (core) reaps any pending
+  past its window; the app runs it every 30 s and, crucially, **before every reconcile** — an
+  orphan must be expired rather than carded. It also runs regardless of whether the relay is
+  configured, because expiry is a fact about the record, not a notification.
+
+- **A grace margin keeps the two timers from fighting.** The window is per-kind (permission 9
+  min, question 20) plus 60 s, so in the ordinary case the writer's own expiry fires first and
+  the sweep finds nothing left to do. The margin is safe because both writers only ever
+  **shrink** their window via env, and only for tests — nothing lengthens it, so the sweep can
+  never reap out from under a live waiter.
+
+- **A record it cannot date is left alone.** No parseable `created` ⇒ skip, and it stays visible
+  in the inbox. Guessing an age is how you cancel something real.
+
+- **Retention is a separate question, and the answer is not "purge."** 326 expired records is
+  the pile that made the nine-minute stall visible in the first place (§13); blind purging would
+  have destroyed the evidence. The plan is to roll per-session relay counts into the ADR-0013
+  session record, then prune detail behind a retention window — summarize first, delete second.

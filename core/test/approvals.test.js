@@ -10,6 +10,7 @@ import {
   createApproval, getApproval, listApprovals, pendingApprovals,
   answerApproval, expireApproval, APPROVAL_DECISIONS,
   createQuestion, answerQuestion, markEmailed, APPROVAL_KINDS,
+  sweepExpiredApprovals, PERMISSION_EXPIRE_MS, QUESTION_EXPIRE_MS,
 } from '../src/approvals.js';
 
 test('createApproval writes a pending record and lists it', () => {
@@ -201,4 +202,61 @@ test('core reads a skill-serialized question record (cross-reader contract)', ()
   const answered = answerQuestion(root, id, 'A');
   assert.equal(answered.answer, 'A');
   assert.equal(answered.status, 'answered');
+});
+
+// ---- Expiry sweep (the app is the authority; the hook's timer is only the fast path) ----
+
+// Rewind a record's `created` stamp, the way a real orphan gets old: sitting there.
+function backdate(root, id, ms) {
+  const file = path.join(approvalsDir(root), `${id}.md`);
+  const when = JSON.stringify(new Date(Date.now() - ms).toISOString());
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^created:.*$/m, `created: ${when}`));
+}
+
+test('sweepExpiredApprovals reaps a pending record past its window, leaving fresh ones alone', () => {
+  const root = tmpRoot();
+  const orphan = createApproval(root, { tool: 'Bash', summary: 'hook died holding this' });
+  const fresh = createApproval(root, { tool: 'Write', summary: 'still waiting on a tap' });
+  // A hook that dies takes its timer with it, so nothing else ever reaped this record.
+  backdate(root, orphan.id, PERMISSION_EXPIRE_MS + 2 * 60 * 1000);
+  const reaped = sweepExpiredApprovals(root);
+  assert.deepEqual(reaped.map((a) => a.id), [orphan.id]);
+  assert.equal(getApproval(root, orphan.id).status, 'expired');
+  assert.equal(getApproval(root, fresh.id).status, 'pending');
+  assert.equal(pendingApprovals(root).length, 1);
+});
+
+test('the sweep grace margin lets the writer own the ordinary expiry race', () => {
+  const root = tmpRoot();
+  const a = createApproval(root, { tool: 'Bash', summary: 'expiring right about now' });
+  // At the window itself the hook is still the one counting down — the app stays out of it.
+  assert.equal(sweepExpiredApprovals(root, { now: Date.now() + PERMISSION_EXPIRE_MS }).length, 0);
+  assert.equal(getApproval(root, a.id).status, 'pending');
+});
+
+test('the sweep gives questions their own, longer window', () => {
+  const root = tmpRoot();
+  const permission = createApproval(root, { tool: 'Bash', summary: 'yes or no' });
+  const question = createQuestion(root, { summary: 'Approach A or B?', options: ['A', 'B'] });
+  // 15 min: past the hook's 9-min window, still inside the verqury-ask skill's 20-min one.
+  const first = sweepExpiredApprovals(root, { now: Date.now() + 15 * 60 * 1000 });
+  assert.deepEqual(first.map((a) => a.id), [permission.id]);
+  assert.equal(getApproval(root, question.id).status, 'pending');
+  sweepExpiredApprovals(root, { now: Date.now() + QUESTION_EXPIRE_MS + 2 * 60 * 1000 });
+  assert.equal(getApproval(root, question.id).status, 'expired');
+});
+
+test('the sweep never touches an answered record, or one it cannot date', () => {
+  const root = tmpRoot();
+  const answered = createApproval(root, { tool: 'Bash', summary: 'tapped in time' });
+  answerApproval(root, answered.id, 'allow');
+  const id = '0UNDATEABLERECORD';
+  fs.writeFileSync(
+    path.join(approvalsDir(root), `${id}.md`),
+    `---\nid: ${JSON.stringify(id)}\nstatus: "pending"\nsummary: "no created stamp"\n---\n`,
+  );
+  const reaped = sweepExpiredApprovals(root, { now: Date.now() + 24 * 60 * 60 * 1000 });
+  assert.deepEqual(reaped, []);
+  assert.equal(getApproval(root, answered.id).decision, 'allow'); // verdict survives the sweep
+  assert.equal(getApproval(root, id).status, 'pending'); // undateable → left visible, not guessed
 });

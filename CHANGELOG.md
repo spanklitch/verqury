@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Phantom approval cards on startup.** A permission (or question) whose Claude Code session
+  ended before anyone answered it stayed *pending* forever — the countdown lived only inside the
+  hook that filed it, and died with it. Restarting Verqury then sent your phone a fresh card for
+  a tool call that had finished hours ago, where tapping did nothing. Verqury now owns expiry
+  itself: it sweeps the inbox every 30 seconds, and before every relay pass, so a stale request
+  is closed out instead of announced.
+
 ## [0.6.3] - 2026-08-07
 
 ### Added

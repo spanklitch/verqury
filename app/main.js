@@ -319,6 +319,7 @@ function syncRelay() {
   if (shouldRun) {
     const gen = relayGen;
     relayLoop(gen, token, chatId);
+    reapExpiredApprovals(); // never card an orphan the relay is only now able to see
     reconcileApprovals();
   }
 }
@@ -424,6 +425,18 @@ async function handleMessage(msg, token, chatId) {
     await telegram.sendMessage(token, chatId, `✅ Recorded your answer for #${short(id)}`);
   } catch {
     /* never throw out of the loop */
+  }
+}
+
+// Reap records whose writer died before its own expiry timer could fire (see
+// sweepExpiredApprovals). Runs BEFORE every reconcile so an orphan is expired rather than
+// carded — and unlike the reconcile it runs whether or not the relay is configured,
+// because expiry is a fact about the record, not a notification.
+function reapExpiredApprovals() {
+  try {
+    api.reapExpiredApprovals(root);
+  } catch {
+    /* best-effort; the next sweep retries */
   }
 }
 
@@ -1174,8 +1187,12 @@ app.whenReady().then(() => {
   beat();
   setInterval(beat, 30000); // 3 beats inside the hook's 90s staleness window
   setInterval(pollClipboard, 1000); // clipboard-watch poll (no-op unless enabled)
+  reapExpiredApprovals(); // clear any records orphaned by a hook that died before its timer
   syncRelay(); // start the Telegram long-poll if the relay is configured (ADR-0011 Phase B)
-  setInterval(reconcileApprovals, 30000); // periodic sweep: expiry nudges + missed events
+  setInterval(() => {
+    reapExpiredApprovals();
+    reconcileApprovals();
+  }, 30000); // periodic sweep: reap orphans, then expiry nudges + missed events
 
   const verifyDir = process.env.VERQURY_VERIFY;
   if (verifyDir) win.webContents.once('did-finish-load', () => setTimeout(() => runVerify(verifyDir), 800));

@@ -213,6 +213,36 @@ export function expireApproval(root, id) {
   return { ...data, id: data.id ?? id, path: file };
 }
 
+// ---- Expiry sweep: the app is the expiry AUTHORITY; the writer's timer is the fast path ----
+// The hook/skill counts its own window down from inside its own process — which is the
+// fast path, and dies with it. End the session, Ctrl+C, sleep or kill it and the record
+// it filed stays `pending` forever, because nothing else ever reaped it. On the next app
+// start those zombies draw fresh Telegram cards: phantom approvals for tool calls that
+// finished hours ago, where a tap accomplishes nothing. The app outlives any one hook, so
+// it sweeps. Windows mirror the two writers' defaults (there is no per-record window in
+// the format); the grace margin lets the writer's own expiry win the ordinary race, and
+// since both writers only ever SHRINK their window via env (for tests), a sweep can never
+// reap out from under a live waiter.
+export const PERMISSION_EXPIRE_MS = 9 * 60 * 1000; // hooks/verqury-permission.cjs
+export const QUESTION_EXPIRE_MS = 20 * 60 * 1000; // the verqury-ask skill (ask.cjs)
+const SWEEP_GRACE_MS = 60 * 1000;
+
+export function sweepExpiredApprovals(root, { now = Date.now() } = {}) {
+  const reaped = [];
+  for (const a of pendingApprovals(root)) {
+    const window = a.kind === 'question' ? QUESTION_EXPIRE_MS : PERMISSION_EXPIRE_MS;
+    const created = Date.parse(a.created ?? '');
+    if (!Number.isFinite(created)) continue; // undateable — leave it visible rather than guess
+    if (now - created <= window + SWEEP_GRACE_MS) continue;
+    try {
+      reaped.push(expireApproval(root, a.id));
+    } catch {
+      /* raced with an answer or a delete — the next sweep reads the truth */
+    }
+  }
+  return reaped;
+}
+
 export function deleteApproval(root, id) {
   const file = approvalFile(root, id);
   if (!file) throw new Error(`No such approval: ${id}`);
