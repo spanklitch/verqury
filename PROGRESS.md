@@ -910,3 +910,31 @@ into the `sessions/` record from ADR-0013, then prune detail past a window.
 measured figure was **2 processes / 4.2 MB**; they do drain. Memory pressure was never the issue.
 
 **Deviations:** none. No code changed in this stretch — install, verification, and diagnosis only.
+
+### 2026-08-09 — orphaned approvals reaped: expiry gets an owner
+
+**The bug from the last session, fixed at its root.** The countdown that expires an unanswered
+request lived only inside the process that filed it — the hook (9 min) or the `verqury-ask` skill
+(20 min) — so a session that ended first left the record `pending` with nobody responsible for it.
+The two records filed 2026-08-07 at 21:23/21:29 were still pending when this session opened,
+**43.5 hours** later, and would have drawn fresh Telegram cards on the next app start.
+
+**What shipped (`a05d9a2`, local):**
+1. **`sweepExpiredApprovals(root, { now })`** in `core/src/approvals.js` — reaps any pending past
+   its window; per-kind (`PERMISSION_EXPIRE_MS` 9 min / `QUESTION_EXPIRE_MS` 20 min) **plus a 60 s
+   grace**, so the writer's own timer stays the fast path and wins the ordinary race. Safe because
+   both writers only ever *shrink* their window via env, and only for tests.
+2. **`api.reapExpiredApprovals`** + a `reapExpiredApprovals()` in `app/main.js` on the 30 s
+   interval, at startup, and inside `syncRelay` — always **before** a reconcile, so an orphan is
+   expired rather than carded, and it runs whether or not the relay is configured.
+3. **A record with no parseable `created` is skipped**, left visible in the inbox. Guessing an age
+   is how you cancel something real.
+4. **Four tests** (100 total: 73 core + 27 app), lint clean, secret/PII grep clean.
+
+**Verified on the real data root, not a fixture.** The sweep reaped both 43-hour orphans
+(`…4C31A7`, `…4ADDB8`) → **0 pending, 326 expired**. The in-app `idea` task is closed. Gotchas in
+engineering-notes **§14**; CHANGELOG entry under Unreleased.
+
+**Deviations:** the fix is committed locally but **not pushed** and **not released** — no version
+bump, no AppImage. The running 0.6.3 install therefore still has the old behaviour; the reap
+lands with the next build.
