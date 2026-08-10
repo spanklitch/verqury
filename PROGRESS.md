@@ -964,3 +964,9 @@ Cut and shipped the orphan-reap fix as a one-fix release.
 out of the way first.
 
 **Deviations:** none.
+
+**Field confirmation (Gary, 2026-08-09):** the **Phase C email context channel works end-to-end to
+Gmail**. Long permission requests arrive as email carrying the **matching Telegram ticket number**,
+so the two channels join up as designed. That was the last relay leg never verified against real
+mail — it is no longer a theoretical path. Email remains deliberately powerless (no action link);
+authority stays on the authed Telegram chat.
