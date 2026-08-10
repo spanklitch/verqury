@@ -25,3 +25,4 @@ New records start from [`0000-template.md`](0000-template.md) and take the next 
 | [0011](0011-remote-decision-relay.md) | Remote decision relay — approve builds from the phone via Here/Away + hooks | Accepted |
 | [0012](0012-open-source-and-web-companion.md) | Free + open source, with a standalone verqury.com web companion | Accepted |
 | [0013](0013-session-metrics-harvested-from-transcripts.md) | Session metrics are harvested from Claude Code transcripts into per-session files | Accepted |
+| [0014](0014-lines-of-code-and-cost-via-a-local-otlp-receiver.md) | Lines of code and real cost come from OpenTelemetry, pushed to a local receiver | Proposed |
