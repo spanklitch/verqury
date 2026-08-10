@@ -1014,3 +1014,35 @@ outage, which is also why this entry was written the following session rather th
 
 **Carried, not done:** an ingest that matches no project is counted in the return value but shown
 nowhere, so a silently-dropped session looks identical to no session at all.
+
+### 2026-08-10 (same day) — v0.6.5 released and installed
+
+Cut the OTel slice as a release. The slice itself was built the previous session; this was
+the cut, the verification, and the install.
+
+1. **Version** 0.6.4 → 0.6.5 across root/core/app + lockfile; CHANGELOG `[Unreleased]` →
+   `[0.6.5] - 2026-08-10` with its compare link; **ADR-0014 flipped Proposed → Accepted**
+   (and in the ADR index) — the 0011 precedent: a design stops being a proposal once it
+   ships in a binary.
+2. **Built** AppImage + .deb backgrounded from a plain terminal. Clean, exit 0.
+3. **Packaged harness: 60 boolean checks, zero failures**, against a throwaway
+   `VERQURY_DATA_ROOT` + `VERQURY_TRANSCRIPTS_ROOT`. Three blocks skip by design in a
+   packaged run (hooks/ and skills/ aren't bundled).
+4. **Block 18 green in the packaged binary** — all seven ingest checks. Unlike 0.6.4, this
+   release's own claim is inside the harness, so no separate probe against the artifact was
+   needed: the receiver bound, took a real-shaped OTLP POST, and the numbers reached both the
+   record and the meter, surviving a re-harvest.
+5. **Installed** to `~/Applications/Verqury.AppImage` (md5 `ba6e7d1578c5ec0a3b81d3eda63f071d`,
+   verified against `app/dist/`). Hooks untouched since v0.6.4 and the installed copies still
+   match the repo, so there was no hook step.
+
+**The harness seed bit again, in a new way.** The rebuilt seed gave its project
+`repo: /harness/repo` — the same path block 17 creates *Harness Metrics* with. Session →
+project resolution takes the **first** project whose repo contains the cwd, so the seed
+project silently swallowed the ingest: the receiver bound, the POST returned 200, and four
+block-18 checks failed with the numbers nowhere. The seed now uses `/harness/seed-only`.
+Worth knowing beyond the harness: **two projects claiming the same repo is genuinely
+ambiguous**, and Verqury resolves it by declaration order rather than complaining. Not a
+release blocker — it takes a duplicate repo path to reach — but it is a real sharp edge.
+
+**Deviations:** none.
