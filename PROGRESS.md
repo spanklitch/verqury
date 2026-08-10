@@ -18,6 +18,7 @@ verify success criteria, update this file.
 - [x] **Remote decision relay — Phase A** (2026-07-14 — Here/Away + Telegram notify hook; code+harness verified, live phone verified)
 - [x] **Remote decision relay — Phase B** (2026-07-15 — approve-by-tap: PermissionRequest gate + Approval inbox + app Telegram round-trip; **LIVE-PHONE-VERIFIED**; shipped v0.5.0, then **v0.5.1** relay de-dup; 0.5.1 AppImage built + launcher repointed + hooks installed/registered)
 - [x] **Project instrumentation — slice 1** (2026-08-07 — ADR-0013 + transcript harvester + build-time meter; **shipped v0.6.3** with the two carried UX fixes. LOC deferred to an OTel slice.)
+- [x] **Project instrumentation — slice 2** (2026-08-10 — ADR-0014 + loopback OTLP receiver; LOC + real USD cost on the meter, off by default. Built, tested and pushed; **not yet released** — no version bump, ADR still Proposed.)
 - [x] **Remote decision relay — Phase C** (2026-07-15 — `verqury-ask` skill + question inbox + escalating email context + typed-reply channel; 70 tests + lint + harness block 13 green; **SHIPPED v0.6.0 + LIVE-PHONE+EMAIL-VERIFIED**. Relay initiative COMPLETE (A→C).)
 
 ## Open questions (plan §7)
@@ -970,3 +971,46 @@ Gmail**. Long permission requests arrive as email carrying the **matching Telegr
 so the two channels join up as designed. That was the last relay leg never verified against real
 mail — it is no longer a theoretical path. Email remains deliberately powerless (no action link);
 authority stays on the authed Telegram chat.
+
+### 2026-08-10 — Project instrumentation, slice 2: LOC + real cost via OpenTelemetry (ADR-0014)
+
+Built the third metric idea ADR-0013 had to leave in the `todo` lane. Transcripts record what a
+session *said*, never how much code it changed or what it cost — those numbers exist only in
+Claude Code's own OpenTelemetry export. So Verqury now runs a receiver for it.
+
+**Shipped (committed + pushed, `05efc7c`):**
+1. **`core/src/telemetry.js`** — parses an OTLP/HTTP-JSON metrics export, resolves each session to
+   a project, and merges the result into the existing `projects/<slug>/sessions/<id>.md`.
+2. **`app/src/otel-receiver.js`** — a plain `node:http` listener in the Electron main process. No
+   collector binary, no new dependency; **loopback-only, port configurable, off by default**. A
+   taken port degrades the meter to "no numbers" rather than blocking startup.
+3. **App wiring** — api + IPC + preload, main-process lifecycle, and env injection for sessions
+   **Verqury launches** (both the embedded pty and externally spawned adapters).
+4. **UI** — the LOC figure on the project meter, plus a **Settings → Build metrics** panel.
+5. **113 tests** (81 core + 32 app), **harness block 18** (7 checks, all green), engineering-notes
+   **§15**, CHANGELOG under `[Unreleased]`.
+
+**Verified on live data, not fixtures.** A real `claude -p` session produced `+4/-0 lines` and
+`$0.000621`, and the meter rendered **"4 lines since Aug 2026"**. That also settled the assumption
+ADR-0014 flagged as load-bearing but unconfirmed: the metrics' `session.id` really does equal the
+transcript basename, which is the only reason attribution works at all (the payload carries no
+`cwd`, so it must route *through* the transcript).
+
+**Design decisions honoured from the ADR:** the meter labels LOC **by start date** and never shows
+a bare zero, because counting cannot be backfilled — the measurements did not exist before the
+switch was flipped. And only Verqury-launched sessions are instrumented, so the figure is
+explicitly a **floor, not a total**.
+
+**Two gotchas that cost real time, both written up in §15:** the generic
+`OTEL_EXPORTER_OTLP_ENDPOINT` is gRPC-only and fails **silently** under http/json (use
+`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` with the full `/v1/metrics` path); and the counters are
+**cumulative**, re-exported every interval, so the merge must be last-value-wins — summing
+triple-counts a 30-second session.
+
+**Deviations:** the slice is built, tested and pushed but **NOT released** — no version bump, no
+AppImage, and ADR-0014 is still `Proposed` (it flips to `Accepted` on release, per the 0011
+precedent). The session ended abruptly: the machine was shut down ahead of a storm-related power
+outage, which is also why this entry was written the following session rather than at the time.
+
+**Carried, not done:** an ingest that matches no project is counted in the return value but shown
+nowhere, so a silently-dropped session looks identical to no session at all.

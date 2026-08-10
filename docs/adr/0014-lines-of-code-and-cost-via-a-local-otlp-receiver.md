@@ -1,6 +1,6 @@
 # 0014. Lines of code and real cost come from OpenTelemetry, pushed to a local receiver
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-09
 
 ## Context
