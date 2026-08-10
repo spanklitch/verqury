@@ -50,6 +50,10 @@ import {
   updateNotify as coreUpdateNotify,
   harvestSessions,
   projectMetrics,
+  ingestOtlp,
+  getTelemetry,
+  updateTelemetry,
+  telemetryEnv,
   formatDuration,
   listApprovals,
   pendingApprovals,
@@ -119,7 +123,34 @@ export function changeStage(root, slug, stage) {
 // harvesting re-reads the transcripts and is only done on demand.
 export function getSessionMetrics(root, slug) {
   const m = projectMetrics(root, slug);
-  return { ...m, activeLabel: formatDuration(m.activeSeconds), wallLabel: formatDuration(m.wallSeconds) };
+  return {
+    ...m,
+    activeLabel: formatDuration(m.activeSeconds),
+    wallLabel: formatDuration(m.wallSeconds),
+    // Lines of code are prospective (ADR-0014), so the meter shows WHEN counting
+    // started rather than a bare number that would imply a complete history.
+    locLabel: m.locSessions ? `${(m.linesAdded + m.linesRemoved).toLocaleString('en-US')} lines` : null,
+    locSinceLabel: m.locSince
+      ? new Date(m.locSince).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      : null,
+    costLabel: m.locSessions ? `$${m.costUsd.toFixed(2)}` : null,
+  };
+}
+
+// ---- Telemetry ingest (ADR-0014) ----
+export function getTelemetryConfig(root) {
+  return getTelemetry(root);
+}
+export function setTelemetryConfig(root, patch) {
+  return updateTelemetry(root, patch);
+}
+// The env a Verqury-launched session needs for its metrics to reach the receiver.
+// Empty when telemetry is off, so spreading it is always safe.
+export function getTelemetryEnv(root) {
+  return telemetryEnv(root);
+}
+export function ingestTelemetry(root, body) {
+  return ingestOtlp(root, body);
 }
 
 export function harvestProjectSessions(root, slug) {

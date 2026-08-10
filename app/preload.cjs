@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('verqury', {
   setNarrative: (slug, body) => ipcRenderer.invoke('project:setNarrative', slug, body),
   sessionMetrics: (slug) => ipcRenderer.invoke('sessions:metrics', slug),
   harvestSessions: (slug) => ipcRenderer.invoke('sessions:harvest', slug),
+  getTelemetry: () => ipcRenderer.invoke('telemetry:get'),
+  setTelemetry: (patch) => ipcRenderer.invoke('telemetry:set', patch),
   addLog: (slug, payload) => ipcRenderer.invoke('log:add', slug, payload),
   addDecision: (slug, payload) => ipcRenderer.invoke('decision:add', slug, payload),
   setGuidanceBody: (scope, slug, body) => ipcRenderer.invoke('guidance:setBody', scope, slug, body),

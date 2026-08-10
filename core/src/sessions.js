@@ -11,6 +11,11 @@ import { projectPaths, transcriptsRoot } from './paths.js';
 import { readDoc, writeDoc } from './frontmatter.js';
 import { listProjects } from './projects.js';
 
+// The session record has two writers pointing at it from opposite ends (ADR-0014):
+// harvesting owns timing + tokens, telemetry ingest owns these. Declared here, with
+// the record, so neither side clobbers the other on rewrite.
+export const TELEMETRY_FIELDS = ['linesAdded', 'linesRemoved', 'costUsd', 'telemetryAt'];
+
 // A gap longer than this is someone walking away, not thinking. Measured against
 // this project's own transcripts, wall-clock reads ~5x active time without it.
 export const IDLE_GAP_SECONDS = 15 * 60;
@@ -188,12 +193,20 @@ export function harvestSessions(root, projectSlug, opts = {}) {
       continue;
     }
     fs.mkdirSync(dir, { recursive: true });
+    const record = path.join(dir, `${summary.sessionId}.md`);
+    // Two sources write this record from opposite ends (ADR-0014): harvesting owns the
+    // timing and token columns, telemetry owns lines-of-code and cost. Carry the other
+    // side's fields through, or a re-harvest silently wipes them.
+    const existing = fs.existsSync(record) ? readDoc(record).data : {};
     const data = {
       ...summary,
       project: projectSlug,
       harvested: new Date().toISOString(),
     };
-    writeDoc(path.join(dir, `${summary.sessionId}.md`), data, sessionBody(summary));
+    for (const key of TELEMETRY_FIELDS) {
+      if (existing[key] !== undefined) data[key] = existing[key];
+    }
+    writeDoc(record, data, sessionBody(summary));
     sessions.push(data);
   }
 
@@ -221,6 +234,12 @@ export function listSessions(root, { project } = {}) {
         cacheWrite: data.cacheWrite ?? 0,
         cacheRead: data.cacheRead ?? 0,
         model: data.model ?? null,
+        // Telemetry-side columns (ADR-0014); null when a session predates telemetry
+        // or ran outside Verqury, which is the common case and not an error.
+        linesAdded: data.linesAdded ?? null,
+        linesRemoved: data.linesRemoved ?? null,
+        costUsd: data.costUsd ?? null,
+        telemetryAt: data.telemetryAt ?? null,
       });
     }
   }
@@ -242,6 +261,15 @@ export function projectMetrics(root, projectSlug) {
     cacheRead: 0,
     firstStarted: sessions[0]?.started ?? null,
     lastEnded: null,
+    // Lines of code are PROSPECTIVE: they exist only for sessions that ran with
+    // telemetry on, so the total is a floor, not a project's true line count
+    // (ADR-0014). `locSince` is what lets the meter say so instead of implying a
+    // complete number, and `locSessions` is how many sessions actually contributed.
+    linesAdded: 0,
+    linesRemoved: 0,
+    costUsd: 0,
+    locSessions: 0,
+    locSince: null,
   };
   for (const s of sessions) {
     total.activeSeconds += s.activeSeconds;
@@ -251,6 +279,14 @@ export function projectMetrics(root, projectSlug) {
     total.cacheWrite += s.cacheWrite;
     total.cacheRead += s.cacheRead;
     if (!total.lastEnded || String(s.ended) > total.lastEnded) total.lastEnded = s.ended;
+    if (s.linesAdded === null && s.linesRemoved === null && s.costUsd === null) continue;
+    total.linesAdded += s.linesAdded ?? 0;
+    total.linesRemoved += s.linesRemoved ?? 0;
+    total.costUsd += s.costUsd ?? 0;
+    total.locSessions += 1;
+    const since = s.started ?? s.telemetryAt;
+    if (since && (!total.locSince || String(since) < total.locSince)) total.locSince = since;
   }
+  total.costUsd = Math.round(total.costUsd * 10000) / 10000; // float sum → 4dp, not 0.30000000000000004
   return total;
 }

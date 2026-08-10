@@ -7,6 +7,7 @@ const node = {
   clearTimeout: 'readonly',
   setInterval: 'readonly',
   clearInterval: 'readonly',
+  fetch: 'readonly', // node 18+ global; used by the OTLP receiver's tests
 };
 
 export default [

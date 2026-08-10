@@ -562,3 +562,38 @@ makes `createWindow(false)` start the app in the tray without showing a window.
   the pile that made the nine-minute stall visible in the first place (§13); blind purging would
   have destroyed the evidence. The plan is to roll per-session relay counts into the ADR-0013
   session record, then prune detail behind a retention window — summarize first, delete second.
+
+## 15. Receiving Claude Code's OpenTelemetry metrics (2026-08-10, ADR-0014)
+
+- **The generic OTLP endpoint variable is gRPC-only, and its failure mode is silence.**
+  `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4319` with `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`
+  exported **nothing** — no error, no retry, no log; the receiver simply never heard from the
+  session. The working form is the per-signal variable carrying the full path:
+  `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://127.0.0.1:<port>/v1/metrics`. If metrics never
+  arrive, suspect this before suspecting the receiver.
+
+- **The counters are CUMULATIVE and re-exported every interval.** One ~30-second session produced
+  **three** exports, each carrying the running total (not a delta). Anything that sums exports
+  triple-counts. The merge is last-value-wins per session + attribute, and there is a test that
+  fails if that is ever "fixed" into addition.
+
+- **The payload has no cwd, so it cannot say which project it belongs to.** It carries
+  `session.id`; the transcript is named `<session-id>.jsonl` and holds the cwd. So attribution
+  goes *through* the transcript, reusing the same under-the-repo rule harvesting uses. **Verified
+  on live data before it was built on** (metric `session.id` `3757bb45…` ↔ transcript
+  `3757bb45….jsonl`) — the whole storage design rested on it.
+
+- **Two writers, one record, opposite ends.** Harvesting owns timing + tokens; telemetry owns
+  lines + cost. Either one rewriting the file wholesale silently erases the other's columns —
+  which looks like "the LOC number randomly disappears" hours later. `TELEMETRY_FIELDS` is
+  carried through on harvest, and a test covers both directions.
+
+- **Diagnosing a "nothing is counting" report:** check in this order — (1) is telemetry enabled in
+  Settings, (2) was the session *launched by Verqury* (nothing else is instrumented, by design),
+  (3) is the receiver actually bound (the settings panel says, and a taken port degrades to
+  not-listening rather than failing loudly), (4) the endpoint-variable trap above.
+
+- **A short `claude -p` run is a perfectly good probe.** `claude -p "…" --allowedTools "Write"`
+  in a scratch dir, with `OTEL_METRIC_EXPORT_INTERVAL=3000`, produces a real export in seconds and
+  is how every fact in this section was established. `OTEL_METRICS_EXPORTER=console` is the faster
+  first question — it separates "telemetry is off" from "transport is wrong".

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Lines of code and real cost on the project meter.** Verqury can now receive the metrics Claude
+  Code measures about itself — lines added and removed, and what a session actually cost in
+  dollars — and folds them into the same per-session records the build-time meter already keeps.
+  Off by default; switch it on under **Settings → Build metrics**.
+  - Only sessions **Verqury launches** are counted, so the line figure is a floor rather than a
+    total, and the meter always shows the date counting began instead of implying it knows your
+    project's whole history.
+  - Counting starts when you enable it. Unlike build time, past sessions cannot be backfilled —
+    the measurements simply do not exist before then.
+  - The receiver listens on loopback only, on a port you choose, and nothing leaves your machine.
+    If the port is taken, the meter quietly goes without the numbers rather than blocking startup.
+
 ## [0.6.4] - 2026-08-09
 
 ### Fixed

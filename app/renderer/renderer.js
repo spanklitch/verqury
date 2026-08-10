@@ -722,12 +722,25 @@ function renderSessionMeter(project) {
         h('span', { class: 'meter-value', text: `⏱ ${m.activeLabel}` }),
         h('span', { class: 'muted', text: `build time · ${compactTokens(m.outputTokens)} out · ${m.sessions} session${m.sessions === 1 ? '' : 's'}` }),
       );
+      // Lines of code and real cost only exist for sessions that ran with telemetry
+      // on (ADR-0014), so they appear ONLY once something has reported, and never
+      // without the date counting began — a bare number would read as a complete
+      // history of the project, which it is not.
+      if (m.locLabel) {
+        meter.append(
+          h('span', { class: 'meter-value', text: `↕ ${m.locLabel}` }),
+          h('span', { class: 'muted', text: `since ${m.locSinceLabel}${m.costLabel ? ` · ${m.costLabel}` : ''}` }),
+        );
+      }
       // Wall-clock and the raw counters live in the tooltip: active time is the
       // honest headline, but the numbers behind it stay reachable.
       meter.title = [
         `${m.activeLabel} active of ${m.wallLabel} wall-clock`,
         `tokens: ${m.inputTokens.toLocaleString()} in / ${m.outputTokens.toLocaleString()} out`,
         `cache: ${m.cacheWrite.toLocaleString()} written / ${m.cacheRead.toLocaleString()} read`,
+        m.locSessions
+          ? `lines: +${m.linesAdded.toLocaleString()} / -${m.linesRemoved.toLocaleString()} across ${m.locSessions} instrumented session${m.locSessions === 1 ? '' : 's'} (a floor, not a total)`
+          : 'lines of code: needs telemetry enabled in Settings',
       ].join('\n');
     }
     meter.append(harvestBtn);
@@ -809,6 +822,10 @@ function renderSettingsList() {
       h('div', { class: 'card-meta' },
         h('span', { class: `badge ${away ? 'kind' : ''}`, text: away ? 'Away' : 'Here' }),
         state.notify?.enabled ? h('span', { class: 'badge', text: 'on' }) : null)),
+    h('div', { class: `settings-nav-card${state.settingsView === 'telemetry' ? ' active' : ''}`, onclick: () => showTelemetryPanel() },
+      h('div', { class: 'name', text: '📐 Build metrics' }),
+      h('div', { class: 'card-meta' },
+        h('span', { class: `badge${state.telemetry?.running ? ' kind' : ''}`, text: state.telemetry?.running ? 'listening' : 'off' }))),
     h('div', { class: `settings-nav-card${state.settingsView === 'about' ? ' active' : ''}`, onclick: () => showAboutPanel() },
       h('div', { class: 'name', text: 'ℹ️ About & updates' }),
       h('div', { class: 'card-meta' }, h('span', { class: 'badge', text: 'web' }))),
@@ -916,6 +933,46 @@ async function showAboutPanel() {
       h('div', { class: 'section-label', text: 'Links' }),
       extLink('verqury.com', SITE_URL),
       extLink('Source on GitHub', 'https://github.com/spanklitch/verqury')),
+  );
+}
+
+/* ---------- settings: build metrics / telemetry (ADR-0014) ---------- */
+
+// Lines of code and real cost come from Claude Code's OpenTelemetry export, which
+// Verqury receives on loopback. Off by default; enabling it only affects sessions
+// VERQURY launches, which is stated plainly here rather than left to be discovered.
+async function showTelemetryPanel() {
+  state.activeAdapter = null;
+  state.settingsView = 'telemetry';
+  state.telemetry = await window.verqury.getTelemetry();
+  renderSettingsList();
+
+  const cfg = state.telemetry;
+  const enabled = h('input', { type: 'checkbox', id: 'telemetry-enabled' });
+  enabled.checked = cfg.enabled === true;
+  const port = h('input', { type: 'number', class: 'input', value: String(cfg.port ?? 4318), min: '1024', max: '65535' });
+  const status = h('div', { class: 'status-line muted', text: cfg.running ? `Listening on 127.0.0.1:${cfg.port}` : 'Not listening.' });
+
+  async function save() {
+    const next = await window.verqury.setTelemetry({ enabled: enabled.checked, port: Number(port.value) || 4318 });
+    state.telemetry = next;
+    status.textContent = next.running
+      ? `Listening on 127.0.0.1:${next.port}`
+      : (next.enabled ? `Could not bind port ${next.port} — something else is using it.` : 'Not listening.');
+    renderSettingsList();
+  }
+
+  detailEl.replaceChildren(
+    h('div', { class: 'detail-head' }, h('h1', { class: 'detail-title', text: 'Build metrics' })),
+    h('div', { class: 'detail-sub', text: 'Lines of code and real cost, measured by Claude Code itself and received here on your own machine. Nothing leaves the box.' }),
+    h('div', { class: 'form' },
+      h('label', { class: 'row' }, enabled, h('span', { text: ' Receive build metrics from Claude Code' })),
+      h('div', { class: 'section-label', text: 'Listen port (loopback only)' }),
+      port,
+      h('div', { class: 'muted', text: 'Only sessions Verqury launches are counted — a session you start in another terminal is not measured, so the line count is a floor, not a total.' }),
+      h('div', { class: 'muted', text: 'Counting starts when you switch this on; past sessions cannot be backfilled.' }),
+      status,
+      h('div', { class: 'detail-actions' }, h('button', { class: 'btn primary', onclick: save }, 'Save'))),
   );
 }
 

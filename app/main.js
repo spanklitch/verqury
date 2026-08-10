@@ -11,6 +11,29 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
+// ---- Telemetry receiver (ADR-0014) ----
+// Lines of code and real cost only exist in Claude Code's OpenTelemetry export, so
+// Verqury runs a loopback OTLP listener and joins what arrives to the session records
+// the meter already keeps. Optional and off by default: with it disabled — or its port
+// taken — the app behaves exactly as before, minus those two numbers.
+let otelReceiver = null;
+
+async function syncTelemetry() {
+  const cfg = api.getTelemetryConfig(root);
+  if (otelReceiver) {
+    await otelReceiver.stop();
+    otelReceiver = null;
+  }
+  if (!cfg.enabled) return null;
+  otelReceiver = createOtelReceiver({
+    port: cfg.port,
+    onPayload: (body) => api.ingestTelemetry(root, body),
+  });
+  const bound = await otelReceiver.start();
+  if (bound === null) otelReceiver = null; // port taken — degrade, never block startup
+  return bound;
+}
+
 // Embedded terminal: node-pty spawns real PTYs in the main process and streams
 // them to xterm.js widgets in the renderer (ADR-0009, multi-session ADR-0010).
 // node-pty is a native module built for Electron's ABI (electron-rebuild), loaded
@@ -25,7 +48,10 @@ function ptyStart(id, { shell, cwd } = {}) {
     cols: 80,
     rows: 24,
     cwd: cwd && fs.existsSync(cwd) ? cwd : process.env.HOME,
-    env: process.env,
+    // Telemetry is enabled for Verqury-LAUNCHED sessions only (ADR-0014 decision 5):
+    // a session started in some other terminal is simply not counted. Empty object
+    // when telemetry is off, so this spread is a no-op then.
+    env: { ...process.env, ...api.getTelemetryEnv(root) },
   });
   proc.onData((d) => {
     if (win && !win.isDestroyed()) win.webContents.send('pty:data', { id, data: d });
@@ -45,6 +71,7 @@ function ptyKill(id) {
 import { addLog, writeHeartbeat, clearHeartbeat, readConfig, writeConfig } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
+import { createOtelReceiver } from './src/otel-receiver.js';
 import * as telegram from './src/telegram.js';
 import { makeTransport, sendContextEmail } from './src/mailer.js';
 import { parseAskPayload, askCardText, askEmailBody } from './src/ask-card.js';
@@ -85,7 +112,12 @@ function launchAdapter(adapterSlug, projectSlug) {
     };
   }
   if (command.trim()) {
-    spawn(command, { shell: true, detached: true, stdio: 'ignore' }).unref();
+    spawn(command, {
+      shell: true,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, ...api.getTelemetryEnv(root) }, // Verqury-launched ⇒ counted
+    }).unref();
   }
   return { launched: Boolean(command.trim()), target: 'external', command, copiedPacket };
 }
@@ -262,6 +294,12 @@ function setupIpc() {
   ipcMain.handle('approval:answer', (_e, id, decision) => api.decideApproval(root, id, decision));
   ipcMain.handle('question:answer', (_e, id, answer) => api.answerQuestionInbox(root, id, answer));
   ipcMain.handle('approval:expire', (_e, id) => api.parkApproval(root, id));
+  ipcMain.handle('telemetry:get', () => ({ ...api.getTelemetryConfig(root), running: Boolean(otelReceiver) }));
+  ipcMain.handle('telemetry:set', async (_e, patch) => {
+    api.setTelemetryConfig(root, patch);
+    const bound = await syncTelemetry();
+    return { ...api.getTelemetryConfig(root), running: Boolean(otelReceiver), boundPort: bound };
+  });
 
   ipcMain.handle('pty:start', (_e, id, opts) => ptyStart(id, opts));
   ipcMain.on('pty:input', (_e, id, data) => { const p = ptys.get(id); if (p) p.write(data); });
@@ -1122,6 +1160,46 @@ async function runVerify(outDir) {
       result.meterRendered = await dom("(document.querySelector('.session-meter .meter-value')?.textContent||'').includes('20m')");
     }
 
+    // (18) Build metrics ingest (ADR-0014): stand the OTLP receiver up, push a
+    // real-shaped export at it, and prove the numbers reach the record AND the meter.
+    // Uses the harness transcripts tree so the session→project join has something to
+    // resolve against — the payload itself carries no cwd.
+    if (process.env.VERQURY_TRANSCRIPTS_ROOT) {
+      api.setTelemetryConfig(root, { enabled: true, port: 4417 });
+      const bound = await syncTelemetry();
+      result.telemetryListening = bound === 4417;
+      const otlp = {
+        resourceMetrics: [{ scopeMetrics: [{ metrics: [
+          { name: 'claude_code.lines_of_code.count', sum: { dataPoints: [
+            { asInt: '15', attributes: [{ key: 'session.id', value: { stringValue: 'harness-session-one' } }, { key: 'type', value: { stringValue: 'added' } }] },
+            { asInt: '3', attributes: [{ key: 'session.id', value: { stringValue: 'harness-session-one' } }, { key: 'type', value: { stringValue: 'removed' } }] },
+          ] } },
+          { name: 'claude_code.cost.usage', sum: { dataPoints: [
+            { asDouble: 0.42, attributes: [{ key: 'session.id', value: { stringValue: 'harness-session-one' } }] },
+          ] } },
+        ] }] }],
+      };
+      const post = await fetch('http://127.0.0.1:4417/v1/metrics', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(otlp),
+      });
+      result.telemetryAccepted = post.status === 200;
+      await wait(200);
+      const tm = api.getSessionMetrics(root, 'harness-metrics');
+      result.telemetryIngested = tm.linesAdded === 15 && tm.linesRemoved === 3;
+      // The LOC figure must never render without the date counting began.
+      result.telemetryLabelled = tm.locLabel === '18 lines' && Boolean(tm.locSinceLabel);
+      // A re-harvest must not wipe what telemetry wrote (the silent-regression case).
+      await dom(`window.verqury.harvestSessions('harness-metrics')`);
+      await wait(300);
+      result.telemetrySurvivesHarvest = api.getSessionMetrics(root, 'harness-metrics').linesAdded === 15;
+      await dom("[...document.querySelectorAll('.project-card')].find(c=>c.textContent.includes('Harness Metrics'))?.click()");
+      await wait(400);
+      result.telemetryMeterRendered = await dom("(document.querySelector('.session-meter')?.textContent||'').includes('18 lines')");
+      api.setTelemetryConfig(root, { enabled: false });
+      await syncTelemetry();
+      result.telemetryStops = otelReceiver === null;
+    }
+
     await dom("document.querySelector('.tab[data-mode=projects]').click()"); // end on a normal view for the shot
     await wait(200);
 
@@ -1187,6 +1265,7 @@ app.whenReady().then(() => {
   beat();
   setInterval(beat, 30000); // 3 beats inside the hook's 90s staleness window
   setInterval(pollClipboard, 1000); // clipboard-watch poll (no-op unless enabled)
+  syncTelemetry(); // start the OTLP listener if telemetry is on (ADR-0014); no-op when off
   reapExpiredApprovals(); // clear any records orphaned by a hook that died before its timer
   syncRelay(); // start the Telegram long-poll if the relay is configured (ADR-0011 Phase B)
   setInterval(() => {
@@ -1213,6 +1292,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('before-quit', () => {
   watcher?.close();
+  otelReceiver?.stop(); // release the OTLP port so the next launch can bind it
   clearHeartbeat(root); // the gate falls back to the desk from the next prompt on
   for (const p of ptys.values()) { try { p.kill(); } catch { /* already gone */ } }
   ptys.clear();
