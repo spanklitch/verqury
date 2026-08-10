@@ -938,3 +938,29 @@ engineering-notes **§14**; CHANGELOG entry under Unreleased.
 **Deviations:** the fix is committed locally but **not pushed** and **not released** — no version
 bump, no AppImage. The running 0.6.3 install therefore still has the old behaviour; the reap
 lands with the next build.
+
+### 2026-08-09 (same day) — v0.6.4 released, installed, and verified
+
+Cut and shipped the orphan-reap fix as a one-fix release.
+
+1. **Version** 0.6.3 → 0.6.4 across root/core/app + lockfile; CHANGELOG `[Unreleased]` →
+   `[0.6.4] - 2026-08-09`, and the **compare link the 0.6.3 cut forgot** was added back.
+2. **Built** AppImage + .deb backgrounded, from a plain xfce4-terminal (never Verqury's own
+   embedded one). Clean, exit 0.
+3. **Packaged harness: 64/64, zero failures**, against a throwaway `VERQURY_DATA_ROOT` +
+   `VERQURY_TRANSCRIPTS_ROOT`. The seed script had died with its scratchpad, so it was rebuilt —
+   requirements now written down in SESSION_STATE rather than rediscovered a third time.
+4. **The fix proved in the packaged binary**, which the harness does not cover: planted a
+   2-hour-old `pending` record in the throwaway root, ran `Verqury-0.6.4.AppImage`, and the record
+   came back `expired`. That is the release's own claim tested against the artifact being shipped,
+   not against the source it was built from.
+5. **Installed** to `~/Applications/Verqury.AppImage` (md5 `341ba7cb7e1b40b8e4d51bbde4feb082`,
+   verified against `app/dist/`). Hooks unchanged this release — repo and `~/.claude/hooks/` md5s
+   still match, so the app-first/hook-second upgrade order had nothing to do.
+6. **Pushed** `main` + tag `v0.6.4`; **GitHub release published** with both artifacts.
+
+**Gotcha worth keeping:** `scripts/install-desktop.sh` installs the **newest** AppImage in
+`app/dist/` (`ls -t | head -1`), not a version you name — a rollback means moving the newer file
+out of the way first.
+
+**Deviations:** none.
