@@ -1,6 +1,6 @@
 {
   "name": "verqury-app",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "private": true,
   "description": "Verqury Electron shell — workflow layer over AI-assisted product development",
   "license": "MIT",

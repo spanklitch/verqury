@@ -24,7 +24,20 @@ export function writeHeartbeat(root, { pid = process.pid, now = new Date() } = {
   return data;
 }
 
-export function clearHeartbeat(root) {
+// Clearing is OWNERSHIP-CHECKED. The heartbeat is per data root, but nothing stops a
+// second app from being pointed at the same root — and a quitting instance that wiped
+// a live one's beat would tell the gate "no app" while an app is right there, sending
+// every permission to the desk instead of the phone. Pass the caller's pid and a beat
+// belonging to someone else is left alone. Omit it and the old unconditional behaviour
+// stands, which is what a CLI or a repair path wants.
+export function clearHeartbeat(root, { pid } = {}) {
+  if (Number.isInteger(pid)) {
+    const hb = readHeartbeat(root);
+    // Only refuse when the beat demonstrably belongs to a DIFFERENT live process. An
+    // unreadable or pid-less beat is cleared: a stale file left by an older version
+    // must never become permanently unclearable.
+    if (hb && Number.isInteger(hb.pid) && hb.pid !== pid && pidAlive(hb.pid)) return false;
+  }
   try {
     fs.unlinkSync(heartbeatPath(root));
     return true;

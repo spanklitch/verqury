@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -68,7 +69,7 @@ function ptyKill(id) {
   if (p) { try { p.kill(); } catch { /* already gone */ } ptys.delete(id); }
   return { id };
 }
-import { addLog, writeHeartbeat, clearHeartbeat, readConfig, writeConfig } from 'verqury-core/files';
+import { addLog, writeHeartbeat, clearHeartbeat, readHeartbeat, readConfig, writeConfig } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
 import { createOtelReceiver } from './src/otel-receiver.js';
@@ -131,6 +132,24 @@ const root = api.ensureRoot(api.getRoot());
 // one that built it — loads it. `$VERQURY_NODE` can override the binary.
 
 const startHidden = process.argv.includes('--hidden'); // autostart-to-tray
+
+// ---- One app per data root ----
+// Verqury is meant to be a single tray-resident companion, but nothing used to enforce
+// it: every launch built a second full instance, and Quit only ended the one whose tray
+// icon you clicked. Worse than the wasted memory, two instances both long-poll Telegram
+// — which must have exactly ONE consumer (ADR-0011) — so a tap could be swallowed by the
+// instance you did not mean.
+//
+// Electron's lock lives in the userData directory, so an explicit VERQURY_DATA_ROOT gets
+// its own userData. That keeps the rule honest (one app per ROOT, not one per machine)
+// and lets a throwaway harness or dev run coexist with the installed app, which the
+// release procedure depends on.
+if (process.env.VERQURY_DATA_ROOT) {
+  const key = crypto.createHash('sha1').update(path.resolve(root)).digest('hex').slice(0, 12);
+  app.setPath('userData', `${app.getPath('userData')}-root-${key}`);
+}
+const isPrimaryInstance = app.requestSingleInstanceLock();
+if (!isPrimaryInstance) app.quit(); // a sibling owns this root — hand off and go
 
 let win = null;
 let tray = null;
@@ -1200,6 +1219,16 @@ async function runVerify(outDir) {
       result.telemetryStops = otelReceiver === null;
     }
 
+    // (19) One app per data root. The lock is what stops a second launch becoming a
+    // second resident app — the state in which Quit ends only the instance whose tray
+    // icon you clicked, and two Telegram consumers race for the same tap.
+    result.singleInstanceLock = app.hasSingleInstanceLock();
+    // A sibling quitting must not take this app's liveness with it. Simulated from the
+    // real running app against its own live beat, which is the case that matters.
+    writeHeartbeat(root);
+    const refused = clearHeartbeat(root, { pid: process.pid + 1 });
+    result.heartbeatSurvivesSiblingQuit = refused === false && readHeartbeat(root)?.pid === process.pid;
+
     await dom("document.querySelector('.tab[data-mode=projects]').click()"); // end on a normal view for the shot
     await wait(200);
 
@@ -1253,7 +1282,18 @@ async function runCapture(outDir) {
   }
 }
 
+// Someone launched Verqury again — from the desktop icon, the menu, or autostart.
+// Treat it as "show me the app", because that is what the second launch meant. Without
+// this a second click would look like nothing happened at all.
+app.on('second-instance', () => {
+  if (!win || win.isDestroyed()) return createWindow(true);
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+});
+
 app.whenReady().then(() => {
+  if (!isPrimaryInstance) return; // quitting; never build a second app's worth of state
   setupIpc();
   createWindow(!startHidden); // autostart launches hidden into the tray
   setupWatcher();
@@ -1293,7 +1333,10 @@ app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('before-quit', () => {
   watcher?.close();
   otelReceiver?.stop(); // release the OTLP port so the next launch can bind it
-  clearHeartbeat(root); // the gate falls back to the desk from the next prompt on
+  // Ours to clear, and only ours: if another instance on this root is still beating,
+  // its liveness must survive our exit (the gate would otherwise go to the desk while
+  // a perfectly good app is running).
+  clearHeartbeat(root, { pid: process.pid }); // the gate falls back to the desk from the next prompt on
   for (const p of ptys.values()) { try { p.kill(); } catch { /* already gone */ } }
   ptys.clear();
 });

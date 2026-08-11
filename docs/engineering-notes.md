@@ -597,3 +597,47 @@ makes `createWindow(false)` start the app in the tray without showing a window.
   in a scratch dir, with `OTEL_METRIC_EXPORT_INTERVAL=3000`, produces a real export in seconds and
   is how every fact in this section was established. `OTEL_METRICS_EXPORTER=console` is the faster
   first question — it separates "telemetry is off" from "transport is wrong".
+
+## 16. "I quit it and it's still running" (2026-08-10, ADR-0015)
+
+- **Quit was never the broken part.** `before-quit` closes the watcher, stops the OTLP receiver,
+  clears the heartbeat and kills every PTY; `app.quit()` ends the process and the AppImage's FUSE
+  mount unmounts cleanly. Verified repeatedly — no leftover processes, no stale
+  `/tmp/.mount_Verqur*`. Chasing the quit path is the wrong first move; **count the instances**.
+
+- **There was no single-instance lock, so every launch built a whole second app.** Two were run
+  side by side to confirm it: ~168 MB each, both tray-resident, fully independent. Quit ends only
+  the one whose tray icon you clicked. Pair that with the known `setupTray()` silent-failure (§13)
+  and you get a resident process with no window and no tray icon — nothing left to click.
+
+- **Electron's lock lives in the userData directory.** That is what makes per-root scoping
+  possible: setting `userData` before `requestSingleInstanceLock()` gives an explicit
+  `VERQURY_DATA_ROOT` its own lock. Without that scoping the packaged harness — which launches the
+  AppImage against a throwaway root — would exit instantly whenever the installed app was running,
+  breaking the release procedure. Confirmed against Electron's own issue history, not memory.
+
+- **The heartbeat had no owner.** One file per root, and whichever instance quit first deleted it,
+  telling the gate "no app" while another app was running and answering. `clearHeartbeat` now takes
+  a pid and refuses to delete a beat belonging to a different **live** process. Note the deliberate
+  asymmetry: pid-less, unreadable, or dead-pid beats are still cleared by anyone — refusing those
+  would strand the file and disable the relay permanently, which is far worse than the bug.
+
+- **A pty `kill()` does not take the terminal's work with it.** Tested with the shipped node-pty
+  under Electron's ABI (`ELECTRON_RUN_AS_NODE=1 ./verqury-app test.cjs` loads the correct native
+  build — plain `node` cannot):
+
+  | child started as | dies with the PTY |
+  |---|---|
+  | foreground job | yes |
+  | plain `&` background | yes |
+  | `disown`ed | **no** |
+  | `setsid` | **no** |
+  | `nohup` | **no** |
+
+  This matters here specifically because the house convention is to run builds backgrounded. Those
+  survivors are the *work Verqury started*, correctly outliving it — but in a process list they are
+  indistinguishable from a leaked app, which is most of why the original report was confusing.
+
+- **Watch out for `setsid cmd & echo $!`** when testing this: it reports the pid of `setsid`, which
+  exits immediately after forking. The child has a different pid and the naive check reports it
+  dead before you even kill anything. Match on the command pattern instead.

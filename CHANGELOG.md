@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-08-10
+
+### Fixed
+- **Quitting Verqury now actually leaves nothing behind.** Nothing used to stop a second copy
+  from starting, so every launch — the desktop icon, the menu, the autostart entry — built
+  another complete instance, and Quit only ended the one whose tray icon you clicked. The rest
+  stayed resident and invisible. Verqury now allows **one app per data root**: launching it again
+  brings the window you already have to the front instead of starting a rival.
+  - This also protects two things that quietly depended on there being only one: the phone relay
+    (two copies would race for the same tap, so an approval could be swallowed by the copy you
+    weren't looking at), and build metrics (only the first copy could claim the port).
+- **A closing window no longer makes the relay think Verqury is gone.** Liveness is one file per
+  data root, and whichever copy exited first deleted it — so the permission gate fell back to
+  desktop prompts while a perfectly good app was still running and waiting. Liveness now belongs
+  to the instance that wrote it.
+
+### Notes
+- Work you started *inside* Verqury's terminal that has deliberately detached itself — anything
+  run with `disown`, `setsid` or `nohup`, including backgrounded builds — still keeps running
+  after Verqury exits. That is intentional: it is your work, not Verqury. A quit-time prompt for
+  live terminal work is on the list.
+- Rationale in [ADR-0015](docs/adr/0015-one-app-per-data-root.md).
+
 ## [0.6.5] - 2026-08-10
 
 ### Added
@@ -326,7 +349,8 @@ and a config-driven adapter registry.
 - Renamed product Velora → **Verqury** (prior name in use by another company);
   applies to package names, CLI command, data root, and all docs.
 
-[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.6.5...HEAD
+[Unreleased]: https://github.com/spanklitch/verqury/compare/v0.6.6...HEAD
+[0.6.6]: https://github.com/spanklitch/verqury/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/spanklitch/verqury/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/spanklitch/verqury/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/spanklitch/verqury/compare/v0.6.2...v0.6.3

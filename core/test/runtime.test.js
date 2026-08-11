@@ -44,6 +44,49 @@ test('clearHeartbeat makes the app read as stopped, and is safe to repeat', () =
   assert.equal(readHeartbeat(root), null);
 });
 
+test('a quitting instance never clears a live sibling\'s heartbeat', () => {
+  const root = tmpRoot();
+  writeHeartbeat(root, { pid: process.pid }); // the instance that is staying up
+  // A second instance, pointed at the same root, quits and cleans up after itself.
+  assert.equal(clearHeartbeat(root, { pid: process.pid + 1 }), false);
+  assert.equal(appRunning(root), true); // the survivor is still declared alive
+  assert.equal(readHeartbeat(root).pid, process.pid);
+});
+
+test('an instance still clears its own heartbeat', () => {
+  const root = tmpRoot();
+  writeHeartbeat(root, { pid: process.pid });
+  assert.equal(clearHeartbeat(root, { pid: process.pid }), true);
+  assert.equal(appRunning(root), false);
+});
+
+test('a heartbeat from a DEAD pid is cleared by anyone — it owns nothing', () => {
+  const root = tmpRoot();
+  writeHeartbeat(root, { pid: 2 ** 30 }); // a pid that cannot be running
+  assert.equal(clearHeartbeat(root, { pid: process.pid }), true);
+  assert.equal(readHeartbeat(root), null);
+});
+
+test('a pid-less or unreadable heartbeat never becomes unclearable', () => {
+  // Written by a version that predates ownership, or half-written. Refusing to clear
+  // these would strand the file forever and permanently disable the relay.
+  const root = tmpRoot();
+  const file = heartbeatPath(root);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ updated: new Date().toISOString() }));
+  assert.equal(clearHeartbeat(root, { pid: process.pid }), true);
+
+  fs.writeFileSync(file, '{ not json');
+  assert.equal(clearHeartbeat(root, { pid: process.pid }), true);
+});
+
+test('clearHeartbeat with no pid is unconditional, as the CLI and repair paths expect', () => {
+  const root = tmpRoot();
+  writeHeartbeat(root, { pid: process.pid });
+  assert.equal(clearHeartbeat(root), true);
+  assert.equal(readHeartbeat(root), null);
+});
+
 test('a corrupt or half-written heartbeat reads as stopped, never throws', () => {
   const root = tmpRoot();
   const file = heartbeatPath(root);

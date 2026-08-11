@@ -18,6 +18,7 @@ verify success criteria, update this file.
 - [x] **Remote decision relay — Phase A** (2026-07-14 — Here/Away + Telegram notify hook; code+harness verified, live phone verified)
 - [x] **Remote decision relay — Phase B** (2026-07-15 — approve-by-tap: PermissionRequest gate + Approval inbox + app Telegram round-trip; **LIVE-PHONE-VERIFIED**; shipped v0.5.0, then **v0.5.1** relay de-dup; 0.5.1 AppImage built + launcher repointed + hooks installed/registered)
 - [x] **Project instrumentation — slice 1** (2026-08-07 — ADR-0013 + transcript harvester + build-time meter; **shipped v0.6.3** with the two carried UX fixes. LOC deferred to an OTel slice.)
+- [x] **App lifecycle — one app per data root** (2026-08-10 — ADR-0015 + single-instance lock + pid-owned heartbeat; shipped v0.6.6)
 - [x] **Project instrumentation — slice 2** (2026-08-10 — ADR-0014 + loopback OTLP receiver; LOC + real USD cost on the meter, off by default. Built, tested and pushed; **not yet released** — no version bump, ADR still Proposed.)
 - [x] **Remote decision relay — Phase C** (2026-07-15 — `verqury-ask` skill + question inbox + escalating email context + typed-reply channel; 70 tests + lint + harness block 13 green; **SHIPPED v0.6.0 + LIVE-PHONE+EMAIL-VERIFIED**. Relay initiative COMPLETE (A→C).)
 
@@ -1044,5 +1045,53 @@ block-18 checks failed with the numbers nowhere. The seed now uses `/harness/see
 Worth knowing beyond the harness: **two projects claiming the same repo is genuinely
 ambiguous**, and Verqury resolves it by declaration order rather than complaining. Not a
 release blocker — it takes a duplicate repo path to reach — but it is a real sharp edge.
+
+**Deviations:** none.
+
+### 2026-08-10 (same day) — v0.6.6: one app per data root
+
+Gary reported that exiting Verqury left something running on the box. Investigation first, then
+two fixes and a cut.
+
+**The finding.** Quit was never the broken part — `before-quit` releases everything and the
+process really does end, with no stale AppImage mount. The problem was that **nothing enforced
+one instance**: every launch built a complete second app (~168 MB, tray-resident, independent),
+so Quit only ended the one whose tray icon you clicked. Confirmed by running two side by side.
+Combined with the known silent `setupTray()` failure (§13), an instance can have no window *and*
+no tray icon — a process with nothing left to click.
+
+Two of the consequences are correctness bugs, not waste: two instances both long-poll Telegram,
+which must have exactly **one** consumer (ADR-0011), so an approval tap can be swallowed by the
+copy you aren't watching; and the heartbeat is one file per root, so whichever instance quits
+first tells the gate "no app" while another is running and answering.
+
+**Shipped:**
+1. **Single-instance lock, scoped per data root** ([ADR-0015]). Electron keys its lock on the
+   userData directory, so an explicit `VERQURY_DATA_ROOT` gets its own — which keeps the rule
+   honest (one app per *root*) and lets a harness or dev run coexist with the installed app. A
+   machine-wide lock would have broken the release procedure itself.
+2. **`second-instance` shows and focuses the existing window**, because launching again means
+   "show me the app" — a second click that appeared to do nothing would be worse than the bug.
+3. **`clearHeartbeat(root, { pid })`** refuses to delete a beat owned by a different **live**
+   process. Deliberately asymmetric: pid-less, unreadable and dead-pid beats stay clearable by
+   anyone, because a permanently unclearable heartbeat would disable the relay for good.
+4. **118 tests** (86 core + 32 app; +5 core), **harness block 19** (`singleInstanceLock`,
+   `heartbeatSurvivesSiblingQuit`), **ADR-0015**, engineering-notes **§16**, CHANGELOG.
+
+**Verified in the packaged binary, beyond what the harness covers.** The harness can only prove
+the lock is *held*; it cannot prove a second launch is *refused*. So: launched
+`Verqury-0.6.6.AppImage`, launched it again on the same root — the second exited immediately, the
+first stayed up, and its heartbeat still carried its own pid, proving the loser's `before-quit`
+left it alone. Both fixes, together, against the artifact being shipped.
+
+**Packaged harness: 62 boolean checks, zero failures.** Installed to `~/Applications/
+Verqury.AppImage` (md5 `1be73ec5640ad115e9f5531108d930dd`). Hooks untouched again this release.
+
+**What this deliberately does NOT fix.** Work started *inside* the embedded terminal that has
+detached itself survives Quit. Measured with the shipped node-pty under Electron's ABI:
+foreground and plain `&` jobs die with the PTY; `disown`, `setsid` and `nohup` children live on.
+That is correct — they are the work Verqury launched, not Verqury — but in a process list they
+look identical to a leaked app, which is most of why the original report was confusing. A
+quit-time "live work is still running" prompt is the open follow-up.
 
 **Deviations:** none.
