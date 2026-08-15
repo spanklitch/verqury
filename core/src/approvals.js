@@ -25,7 +25,9 @@ import { ulid } from './ids.js';
 import { listProjects } from './projects.js';
 import { addLog } from './memory.js';
 
-export const APPROVAL_STATUSES = ['pending', 'answered', 'expired'];
+// `undeliverable` = the card never reached Telegram, so no tap can ever arrive. It is a
+// terminal state like `expired`, reached in seconds instead of nine minutes (ADR-0017).
+export const APPROVAL_STATUSES = ['pending', 'answered', 'expired', 'undeliverable'];
 // The two record kinds that share the inbox (ADR-0011). A missing `kind` on older
 // records means 'permission' (Phase B shipped without the field).
 export const APPROVAL_KINDS = ['permission', 'question'];
@@ -129,6 +131,7 @@ export function listApprovals(root, { status } = {}) {
       answer: data.answer ?? null,
       needsContext: Boolean(data.needsContext),
       emailedAt: data.emailedAt ?? null,
+      error: data.error ?? null, // why an `undeliverable` record never reached the phone
       project: data.project ?? null,
       sessionId: data.sessionId ?? null,
       cwd: data.cwd ?? null,
@@ -210,6 +213,28 @@ export function expireApproval(root, id) {
   data.answered = data.answered ?? new Date().toISOString();
   writeDocAtomic(file, data, body);
   echoToTimeline(root, data, `Remote approval expired → parked at the desk: ${data.summary ?? data.tool ?? 'permission'}`);
+  return { ...data, id: data.id ?? id, path: file };
+}
+
+// The card could not be sent (bad token, blocked bot, Telegram API error, network gone).
+// Nothing will ever arrive on the phone, so waiting out the full window buys nothing but
+// silence — record it and let the writer park at the desk AT ONCE. This extends the
+// v0.6.3 fail-fast principle from "can we send?" (app liveness, checked before the wait)
+// to "did we send?" (checked after the attempt): a token that is present but invalid used
+// to look identical to a healthy relay for the entire nine minutes, every time, for a week.
+// `reason` is Telegram's own `description` where we have one — the record is the only place
+// that failure is ever visible, so it must not be dropped.
+export function markUndeliverable(root, id, reason = '') {
+  const file = approvalFile(root, id);
+  if (!file) throw new Error(`No such approval: ${id}`);
+  const { data, body } = readDoc(file);
+  // A tap or a desk answer beat the failed send — never overwrite a real outcome.
+  if (data.status !== 'pending') return { ...data, id: data.id ?? id, path: file };
+  data.status = 'undeliverable';
+  data.error = String(reason || 'send failed').slice(0, 200);
+  data.answered = data.answered ?? new Date().toISOString();
+  writeDocAtomic(file, data, body);
+  echoToTimeline(root, data, `Remote approval undeliverable (${data.error}) → parked at the desk: ${data.summary ?? data.tool ?? 'permission'}`);
   return { ...data, id: data.id ?? id, path: file };
 }
 

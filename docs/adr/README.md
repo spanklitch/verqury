@@ -27,3 +27,5 @@ New records start from [`0000-template.md`](0000-template.md) and take the next 
 | [0013](0013-session-metrics-harvested-from-transcripts.md) | Session metrics are harvested from Claude Code transcripts into per-session files | Accepted |
 | [0014](0014-lines-of-code-and-cost-via-a-local-otlp-receiver.md) | Lines of code and real cost come from OpenTelemetry, pushed to a local receiver | Accepted |
 | [0015](0015-one-app-per-data-root.md) | One app per data root, and runtime state belongs to the instance that wrote it | Accepted |
+| [0016](0016-closing-the-window-quits.md) | Closing the window quits (reverses tray residency) | Accepted |
+| [0017](0017-a-card-that-cannot-be-sent-parks-at-the-desk.md) | A card that cannot be sent parks at the desk immediately | Accepted |

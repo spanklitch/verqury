@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-14
+
+### Fixed
+- **Closing the window now quits Verqury.** Closing it used to leave the app running with no
+  window — and, whenever the tray icon failed to appear, no icon either, so there was nothing
+  left to click and no way to get it back short of finding the process. One instance had been
+  running unnoticed for fifteen hours. The close button now closes. Starting Verqury at login
+  still puts it in the tray, which is the deliberate way to keep it running quietly.
+  *(Trade-off: remote approvals only work while Verqury is open, so closing the window now also
+  stops your phone relay until you open it again.)*
+- **A phone card that can't be sent no longer holds up your build for nine minutes.** If Telegram
+  rejects the card — a bad token, a blocked bot, an outage — Verqury now records that it couldn't
+  be delivered, along with the reason, and the permission drops straight back to the desktop
+  prompt in about two seconds. It used to wait out the full window every time, with nothing on
+  the phone to answer and nothing anywhere saying why.
+- **The verify harness no longer overwrites your real Telegram token.** It saves a fixture token
+  to prove token-saving works, and that write could land in your live `~/.claude/.env` — which is
+  exactly what silently broke the phone relay for eight days. The harness now writes to its own
+  throwaway file and refuses to start at all if it can still reach the real one.
+- **The reason a card failed is now visible.** Undeliverable requests appear in the Decision Inbox
+  with the error that caused them, instead of looking identical to ones nobody got around to
+  answering.
+
+### Changed
+- Approvals can now end as **undeliverable**, a third outcome beside answered and expired.
+
 ## [0.6.6] - 2026-08-10
 
 ### Fixed
@@ -350,6 +376,7 @@ and a config-driven adapter registry.
   applies to package names, CLI command, data root, and all docs.
 
 [Unreleased]: https://github.com/spanklitch/verqury/compare/v0.6.6...HEAD
+[0.7.0]: https://github.com/spanklitch/verqury/compare/v0.6.6...v0.7.0
 [0.6.6]: https://github.com/spanklitch/verqury/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/spanklitch/verqury/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/spanklitch/verqury/compare/v0.6.3...v0.6.4

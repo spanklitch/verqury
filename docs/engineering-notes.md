@@ -641,3 +641,143 @@ makes `createWindow(false)` start the app in the tray without showing a window.
 - **Watch out for `setsid cmd & echo $!`** when testing this: it reports the pid of `setsid`, which
   exits immediately after forking. The child has a different pid and the naive check reports it
   dead before you even kill anything. Match on the command pattern instead.
+
+## 17. The relay that was armed, configured, and dead (2026-08-14, ADR-0016 + ADR-0017)
+
+- **Symptom.** No Telegram card had reached the phone since 2026-08-06 20:15, but *email* from the
+  same relay kept arriving (last one 2026-08-13). Every permission still stalled the full nine
+  minutes before parking at the desk. Nothing was logged, and the Approvals tab looked normal —
+  records filed, records expired.
+
+- **ROOT cause: the release harness overwrote the real credential store.** The placeholder was
+  not a typo or a redaction pass — it was `123:HARNESS-SECRET`, the literal fixture from harness
+  block 11 (`app/main.js`, `setTelegramToken('123:HARNESS-SECRET')`). That call routes to
+  `saveEnvVar` → `envFilePath()`, which is `process.env.VERQURY_ENV_FILE || ~/.claude/.env`. The
+  release procedure religiously isolates **`VERQURY_DATA_ROOT`** — but `VERQURY_ENV_FILE` is a
+  **second, separate variable**, and when it is unset the harness writes its fixture straight into
+  the live `.env`. Confirmed twice: the relay died the day of the v0.6.1 harness run (2026-08-06),
+  and `.env`'s mtime matches the v0.6.5/0.6.6 runs (2026-08-10).
+
+- **The assertion that should have caught it structurally cannot.** Block 11 does
+  `const envFile = api.envFilePath();` and then asserts the fixture is present in that file — it
+  reads the path back from *the same resolver it just wrote through*, so it passes identically
+  whether it wrote to a throwaway file or to the user's real one. **A test that derives its
+  expected location from the code under test cannot detect that the location is wrong.** Assert
+  against an independently-known path, or assert the negative (the real `.env` was NOT touched).
+
+- **Fix (2026-08-14): the harness owns the path, and refuses to run if it cannot.**
+  `isolateHarnessEnvFile(root)` (in `app/src/api.js`, so it is unit-testable) points
+  `VERQURY_ENV_FILE` at `<throwaway root>/harness.env` whenever it is unset **or aimed at the
+  real store**, then throws if the effective path still resolves to `~/.claude/.env`. It runs as
+  the FIRST statement of `runVerify`, before any block can write a secret; `runVerify`'s existing
+  `finally` still writes `verify.json`, so the refusal is visible rather than silent. Two new
+  harness results: `envFileIsolated` and `realEnvUntouched` (a size+mtime fingerprint of the real
+  `.env`, taken before the run and re-checked after block 11 — it never holds the secret itself).
+  Proven by reproduction under a fake `HOME`: without the guard the sentinel file is clobbered,
+  with it the fixture lands in `harness.env` and the sentinel is untouched.
+
+- **A past session saw it and waved it off.** `PROGRESS.md:602` records the secret-grep noting
+  "the one `HARNESS-SECRET` is the pre-existing fake fixture" — correct that it is a fixture,
+  wrong that its presence in `~/.claude/.env` was harmless. A fixture in a real credential file is
+  a wiped credential, not a known-good string.
+
+- **Cause: the bot token in `~/.claude/.env` was a placeholder.** Eighteen characters against a
+  real token's ~46 (`<9–10 digit bot id>:<35 chars>`). Every call returned `401 Unauthorized`.
+  Email survived because it authenticates with a different credential (`VERQURY_SMTP_PASSWORD`),
+  which is exactly why the relay looked half-alive instead of dead.
+
+- **Diagnosing it: probe the API, do not read the code.** Three curls settle it in one shot, and
+  none of them print the token (only the URL carries it — never echo the URL):
+
+  ```bash
+  TOKEN=$(grep -oP '^\s*VERQURY_TELEGRAM_BOT_TOKEN\s*=\s*\K\S+' ~/.claude/.env)
+  curl -s "https://api.telegram.org/bot$TOKEN/getMe"            # token valid?
+  curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"   # webhook set? last_error_message?
+  ```
+
+  `getWebhookInfo` earns its place: a registered webhook and `getUpdates` are **mutually
+  exclusive**, so a stray webhook kills inbound taps while outbound sends keep working — a
+  different bug with an almost identical presentation.
+
+- **A shape check on the token beats a presence check, for humans.** The hook's `tokenPresent()`
+  deliberately never reads the value, so it cannot judge validity — that is correct and stays. But
+  when diagnosing by hand, `${#TOKEN}` is the fastest single fact available: 18 vs 46 ended a
+  week-long hunt in one line.
+
+- **Three independent layers each swallowed the error**, which is why it survived a week:
+  1. `tokenPresent()` regex-tests only that the key exists with a non-whitespace value.
+  2. `api()` resolves with the parsed body regardless of HTTP status, so `401` is a *fulfilled*
+     promise. No caller checked `res.ok`.
+  3. The send path read `res?.result?.message_id`, got null, and silently retried next sweep.
+
+  Each is defensible alone. Stacked, they turn a hard authentication failure into a nine-minute
+  pause with no output. **When adding a fail-fast guard, check the outcome, not the precondition** —
+  "is it configured" and "did it work" fail in completely different places.
+
+- **A 401 also makes `relayLoop` a hot loop.** Its only backoff lives in `catch`, and a 401 never
+  throws: `res.result || []` yields `[]` and the loop immediately re-requests. A healthy
+  `getUpdates` blocks ~50 s server-side; a rejected one returns instantly. The observed instance
+  had burned ~20 min of CPU across 15 h holding two ESTABLISHED sockets to `api.telegram.org` while
+  its owner believed it was closed. **Still unfixed as of this entry** (scoped out deliberately —
+  it is latent once the token is valid). The fix is to back off on any non-`ok` response, not only
+  on a thrown one.
+
+- **Telling a wedged app from a working one, updated.** §16's advice was to check for ESTABLISHED
+  `:443` sockets as evidence the Telegram long-poll is alive. That is now known to be insufficient:
+  a 401 loop holds exactly those sockets. Check CPU time as well — a real long-poll is nearly free,
+  a rejected one is not.
+
+## 18. Proving "closing the window quits" (2026-08-14, ADR-0016)
+
+- **Listener counts cannot prove it, and the obvious assertion is wrong.** The first attempt
+  asserted `window.listenerCount('close') === 0 && app.listenerCount('window-all-closed') === 1`,
+  reasoning that we had removed our own close listener and registered exactly one handler. The
+  packaged harness returned **false**, and the real numbers are **1 and 2**:
+  - Electron attaches internal `close` wiring to every `BrowserWindow`.
+  - Electron's browser init registers its **own** `window-all-closed` listener, which quits only
+    when it is the SOLE listener — which is exactly why ours has to exist at all.
+
+  Pinning those constants would assert Electron's internals rather than our behaviour: it could
+  pass on a wrong number and would break on any Electron bump. The check is now
+  **informational** (`closeListenerCounts`), not an assertion.
+
+- **The harness structurally cannot fire the real gesture** — a genuine `win.close()` would end
+  the verify run mid-flight. So the proof lives outside it: **`scripts/close-probe.mjs`** spawns
+  the app against a throwaway data root (its own instance lock per ADR-0015, so an installed app
+  is never disturbed), a `VERQURY_CLOSE_PROBE` dev hook closes the window, and the probe measures
+  the only thing that matters — **does the PROCESS exit?** Run it at every release:
+
+  ```bash
+  node scripts/close-probe.mjs app/dist/Verqury-<version>.AppImage
+  node scripts/close-probe.mjs ./node_modules/.bin/electron app   # dev
+  ```
+
+  Bare `electron` with no app dir loads Electron's default page and never reaches our `main.js`;
+  the probe reports INCONCLUSIVE (marker absent) rather than pretending that is a pass.
+
+- **Mutation-test it, because this probe can go vacuous.** Pre-0.7.0 the handler read
+  `if (platform !== 'darwin' && !tray) app.quit()` — so on a machine where the tray fails to
+  initialize, the OLD code also quits and the probe passes either way. Reverting that one line
+  and re-running is what proves the probe discriminates: it reported the ghost ("still running
+  20000 ms later"), confirming the tray does initialize here and the old path really did keep
+  the process alive.
+
+- **Kill the process GROUP, not the child — the mutation test leaks a ghost otherwise.** The
+  mutated run is, by construction, an app that refuses to die when its window closes. Killing
+  only the spawned child leaves Electron's real main process resident. One survived a mutation
+  run here, held **Ctrl+Alt+C** for hours, and then failed `hotkeyRegistered` in an unrelated
+  packaged harness run — a "regression" in a component nothing had touched. `spawn(..., {
+  detached: true })` plus `process.kill(-child.pid, 'SIGKILL')` takes the whole tree.
+  **Diagnostic:** `globalShortcut.register` returning false means *something else holds the
+  accelerator*; a five-line Electron script that registers and prints the result identifies
+  whether the grab is still held, and `ps -eo pid,etime,args | grep electron` finds the holder
+  by its uptime.
+
+- **Hard-exit the probe on timeout.** Electron's zygote grandchildren hold the spawned stdio
+  pipes open, so `process.exitCode = 1` alone leaves the probe hanging well past its own
+  deadline. `process.exit(1)` after the kill.
+
+- **`$?` after a pipe is the pipe's status, not the probe's.** `node scripts/close-probe.mjs … | tail`
+  reports tail's exit code — it will read 0 through a failing probe. Use `PIPESTATUS[0]`, or do
+  not pipe, whenever the exit code gates anything.
+

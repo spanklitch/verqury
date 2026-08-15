@@ -117,3 +117,75 @@ test('harvestProjectSessions returns the refreshed metrics with it', () => {
     delete process.env.VERQURY_TRANSCRIPTS_ROOT;
   }
 });
+
+/* ---- Harness credential isolation (engineering-notes §17) ---- */
+// The regression: the verify harness saved a fixture token through envFilePath(), which
+// falls back to the real ~/.claude/.env when VERQURY_ENV_FILE is unset — so a release run
+// wiped the owner's live Telegram token. These pin the guard that now prevents it.
+
+function withEnvFileUnset(fn) {
+  const prev = process.env.VERQURY_ENV_FILE;
+  delete process.env.VERQURY_ENV_FILE;
+  try {
+    return fn();
+  } finally {
+    if (prev === undefined) delete process.env.VERQURY_ENV_FILE;
+    else process.env.VERQURY_ENV_FILE = prev;
+  }
+}
+
+test('an unset VERQURY_ENV_FILE is redirected into the throwaway root, never the real .env', () => {
+  const root = tmpRoot();
+  const fakeReal = path.join(tmpRoot(), '.env-real');
+  withEnvFileUnset(() => {
+    const chosen = api.isolateHarnessEnvFile(root, { realEnv: fakeReal });
+    assert.equal(chosen, path.join(root, 'harness.env'));
+    assert.equal(api.envFilePath(), path.join(root, 'harness.env')); // saveEnvVar follows it
+  });
+});
+
+test('an env file aimed AT the real credential store is overridden, not honoured', () => {
+  const root = tmpRoot();
+  const fakeReal = path.join(tmpRoot(), '.env-real');
+  const prev = process.env.VERQURY_ENV_FILE;
+  process.env.VERQURY_ENV_FILE = fakeReal; // the exact mistake the release runs made
+  try {
+    assert.equal(api.isolateHarnessEnvFile(root, { realEnv: fakeReal }), path.join(root, 'harness.env'));
+  } finally {
+    if (prev === undefined) delete process.env.VERQURY_ENV_FILE;
+    else process.env.VERQURY_ENV_FILE = prev;
+  }
+});
+
+test('an already-safe override is left alone', () => {
+  const root = tmpRoot();
+  const safe = path.join(tmpRoot(), 'runner-chosen.env');
+  const prev = process.env.VERQURY_ENV_FILE;
+  process.env.VERQURY_ENV_FILE = safe;
+  try {
+    assert.equal(api.isolateHarnessEnvFile(root, { realEnv: path.join(tmpRoot(), '.env-real') }), safe);
+  } finally {
+    if (prev === undefined) delete process.env.VERQURY_ENV_FILE;
+    else process.env.VERQURY_ENV_FILE = prev;
+  }
+});
+
+test('it REFUSES rather than run when the path cannot be moved off the real .env', () => {
+  const root = tmpRoot();
+  // Pathological: the real store IS where isolation would land, so there is nowhere safe.
+  const cornered = path.join(root, 'harness.env');
+  withEnvFileUnset(() => {
+    assert.throws(() => api.isolateHarnessEnvFile(root, { realEnv: cornered }), /refused to run/);
+  });
+});
+
+test('envFingerprint detects a rewrite, and is null when there is nothing to protect', () => {
+  const root = tmpRoot();
+  const f = path.join(root, 'probe.env');
+  assert.equal(api.envFingerprint(f), null); // no file → nothing to guard
+  fs.writeFileSync(f, 'VERQURY_TELEGRAM_BOT_TOKEN=real\n');
+  const before = api.envFingerprint(f);
+  assert.ok(before);
+  fs.writeFileSync(f, 'VERQURY_TELEGRAM_BOT_TOKEN=123:HARNESS-SECRET\n'); // the wipe
+  assert.notEqual(api.envFingerprint(f), before);
+});

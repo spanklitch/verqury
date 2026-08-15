@@ -63,6 +63,7 @@ import {
   answerQuestion,
   markEmailed,
   expireApproval,
+  markUndeliverable,
   sweepExpiredApprovals,
   listAdapters,
   getAdapter,
@@ -337,6 +338,41 @@ export function setTelegramToken(token) {
   return { tokenSet: hasEnvVar(TELEGRAM_TOKEN_KEY) };
 }
 
+// ---- Harness credential isolation (engineering-notes §17) ----
+// The verify harness writes a FIXTURE token through saveEnvVar → envFilePath(), which falls
+// back to the REAL ~/.claude/.env whenever VERQURY_ENV_FILE is unset. The release procedure
+// isolates VERQURY_DATA_ROOT religiously — but this is a SECOND, SEPARATE variable, and
+// nothing enforced it. A harness run therefore overwrote the owner's live Telegram token with
+// `123:HARNESS-SECRET` twice (2026-08-06, 2026-08-10) and the relay was dead for eight days.
+// The harness block even claimed isolation in its comment. A claim is not an enforcement.
+
+// A tamper fingerprint that never holds the secret: size + mtime. saveEnvVar rewrites the
+// whole file, so any write moves both. Returns null when there is no real .env to protect.
+export function envFingerprint(file) {
+  try {
+    const st = fs.statSync(file);
+    return `${st.size}:${st.mtimeMs}`;
+  } catch {
+    return null;
+  }
+}
+
+// Point VERQURY_ENV_FILE at a harness-owned file inside the throwaway data root, unless the
+// runner already aimed it somewhere safe. Then REFUSE — loudly, by throwing — if the
+// effective path is still the real credential store. Owning the path beats trusting the
+// environment: the environment is exactly what was missing when this went wrong.
+export function isolateHarnessEnvFile(root, { realEnv = path.join(os.homedir(), '.claude', '.env') } = {}) {
+  const same = (a, b) => path.resolve(a) === path.resolve(b);
+  if (!process.env.VERQURY_ENV_FILE || same(process.env.VERQURY_ENV_FILE, realEnv)) {
+    process.env.VERQURY_ENV_FILE = path.join(root, 'harness.env');
+  }
+  const effective = envFilePath();
+  if (same(effective, realEnv)) {
+    throw new Error(`VERQURY_VERIFY refused to run: env file resolves to the real credential store (${realEnv})`);
+  }
+  return effective;
+}
+
 export function hasEnvVar(key) {
   return Boolean(readEnvVar(key));
 }
@@ -372,6 +408,10 @@ export function markQuestionEmailed(root, id) {
 }
 export function parkApproval(root, id) {
   return expireApproval(root, id);
+}
+// The send failed, so no tap can ever arrive — park it now rather than at the 9-min mark.
+export function parkUndeliverable(root, id, reason) {
+  return markUndeliverable(root, id, reason);
 }
 // The app owns expiry (see sweepExpiredApprovals): a hook that died before its own timer
 // leaves a record pending forever, and it would be re-carded to the phone on every start.

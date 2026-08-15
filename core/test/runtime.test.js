@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tmpRoot } from './helpers.js';
-import { heartbeatPath } from '../src/paths.js';
+import { heartbeatPath, approvalsDir } from '../src/paths.js';
+import { markUndeliverable, getApproval } from '../src/approvals.js';
 import {
   writeHeartbeat, readHeartbeat, clearHeartbeat, appRunning, HEARTBEAT_STALE_MS,
 } from '../src/runtime.js';
@@ -163,4 +164,43 @@ test('liveness is checked last, so a clearer reason still wins', () => {
   fs.writeFileSync(cfgFile, JSON.stringify(cfg, null, 2));
   // Being at the desk explains it better than the app being closed.
   assert.equal(runPermHook(root, { VERQURY_ENV_FILE: envFile }).reason, 'here');
+});
+
+// The failure this whole path exists for: the app IS running, the gate DOES engage, and
+// the send still fails. Before ADR-0017 the hook had no way to learn that, so it rode the
+// full window every time. Proven by state, not just by the clock: had it waited out the
+// expiry it would have rewritten the record to `expired`.
+test('the hook stops waiting the moment a card proves undeliverable', async () => {
+  const root = tmpRoot();
+  const envFile = armRelay(root);
+  writeHeartbeat(root); // app alive, so the gate engages and the hook commits to waiting
+
+  const started = Date.now();
+  const child = spawn(process.execPath, [permHook], {
+    env: {
+      ...process.env,
+      VERQURY_DATA_ROOT: root,
+      VERQURY_ENV_FILE: envFile,
+      VERQURY_PERMISSION_EXPIRE_MS: '60000', // a window far longer than the bail should take
+      VERQURY_PERMISSION_POLL_MS: '50',
+    },
+  });
+  let out = '';
+  child.stdout.on('data', (c) => (out += c));
+  child.stdin.end(JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: root }));
+
+  // Wait for the record the hook just filed, then fail its send the way the app would.
+  const dir = approvalsDir(root);
+  let id = null;
+  while (!id) {
+    const f = fs.existsSync(dir) ? fs.readdirSync(dir).find((x) => x.endsWith('.md')) : null;
+    if (f) id = f.replace(/\.md$/, '');
+    else await new Promise((r) => setTimeout(r, 20));
+  }
+  markUndeliverable(root, id, 'Unauthorized');
+
+  assert.equal(await new Promise((r) => child.on('close', r)), 0); // never throws at the agent
+  assert.equal(out.trim(), ''); // no decision → the native desktop prompt takes it
+  assert.ok(Date.now() - started < 20000, 'bailed early, nowhere near the 60 s window');
+  assert.equal(getApproval(root, id).status, 'undeliverable'); // it did NOT ride to expiry
 });

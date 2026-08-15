@@ -7,7 +7,7 @@ memory, reusable guidance, captured artifacts, session bootstrapping, and task
 routing, from first concept through build, release, and marketing.
 
 - **Platform:** Linux x64 (X11) desktop — Node 20 + Electron shell, plain-JS renderer
-- **Status:** **v0.6.3** (2026-08-07) — a **build-time meter** on every project, harvested from the session transcripts your AI CLI already leaves on disk, so it backfills real history instead of starting at zero ([ADR-0013](docs/adr/0013-session-metrics-harvested-from-transcripts.md)); plus a relay that fails fast instead of stalling nine minutes when the app isn't running, and a window that admits it's still in the tray. On the complete **remote decision relay** (approve by tap; long context by email), color-coded terminal tabs, and the v0.3.0 multi-tab terminal workbench. Packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
+- **Status:** **v0.7.0** (2026-08-14) — a **close button that actually closes** ([ADR-0016](docs/adr/0016-closing-the-window-quits.md)), and a relay that fails fast in seconds instead of stalling nine minutes — whether the app isn't running or the phone card can't be sent ([ADR-0017](docs/adr/0017-a-card-that-cannot-be-sent-parks-at-the-desk.md)). On the **build-time meter** with lines of code and real cost ([ADR-0013](docs/adr/0013-session-metrics-harvested-from-transcripts.md), [ADR-0014](docs/adr/0014-lines-of-code-and-cost-via-a-local-otlp-receiver.md)), the complete **remote decision relay** (approve by tap; long context by email), color-coded terminal tabs, and the v0.3.0 multi-tab terminal workbench. Packages as an AppImage + `.deb`. See [CHANGELOG](CHANGELOG.md).
 - **Publisher:** [FlawedWorks](https://flawedworks.com)
 
 > Verqury is a workflow layer, not an IDE — and deliberately not a chat interface,
@@ -109,8 +109,14 @@ Built one phase per AI-agent session against [verqury-build-plan.md](verqury-bui
 
 ## Privacy
 
-Verqury is single-user and local-first: no accounts, no telemetry, no cloud sync. All
-data lives in a user-owned directory of plain files.
+Verqury is single-user and local-first: no accounts, no cloud sync, and **nothing phones
+home**. All data lives in a user-owned directory of plain files.
+
+Build metrics (0.6.5+, **off by default**) are the one place telemetry enters the picture,
+and it points *inward*: Verqury **receives** the OpenTelemetry export Claude Code emits about
+itself, on a loopback-only port you choose ([ADR-0014](docs/adr/0014-lines-of-code-and-cost-via-a-local-otlp-receiver.md)).
+Those numbers land in the same per-session markdown files as everything else and are never
+transmitted anywhere.
 
 ## Documentation
 

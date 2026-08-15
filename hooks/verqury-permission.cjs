@@ -28,6 +28,12 @@
 // nothing on the phone to answer, while the app-independent notify hook kept
 // buzzing about other events so the relay still looked alive. Fail fast instead.
 //
+// The same trap has a second door: the app can be running and the send can still
+// fail (invalid token, blocked bot, Telegram outage). A placeholder token did exactly
+// that for a week — 401 on every call, ~380 records aged out at nine minutes each,
+// no signal anywhere. So the app now writes `status: undeliverable` when a card does
+// not land, and this hook parks at the desk the moment it sees it (ADR-0017).
+//
 // Test/override env vars:
 //   VERQURY_DATA_ROOT          data root (default ~/FlawedWorks/verqury)
 //   VERQURY_ENV_FILE           secrets file (default ~/.claude/.env)
@@ -164,7 +170,12 @@ function writeRecord(root, data, body) {
 }
 
 // Poll our record for a verdict the app wrote. Tolerant of quoted or unquoted YAML
-// (the app rewrites via gray-matter). Returns 'allow' | 'deny' | null.
+// (the app rewrites via gray-matter).
+// Returns 'allow' | 'deny' | 'undeliverable' | null.
+//
+// `undeliverable` means the app tried to send the card and Telegram refused it, so no
+// tap is coming and the remaining wait is pure dead time. It is checked BEFORE
+// `answered` because it is the one outcome that must never be mistaken for a verdict.
 function readVerdict(file) {
   let txt;
   try {
@@ -172,6 +183,7 @@ function readVerdict(file) {
   } catch {
     return null;
   }
+  if (/^status:\s*"?undeliverable"?/m.test(txt)) return 'undeliverable';
   if (!/^status:\s*"?answered"?/m.test(txt)) return null;
   const m = txt.match(/^decision:\s*"?(allow|deny)"?/m);
   return m ? m[1] : null;
@@ -236,6 +248,11 @@ function main() {
   while (Date.now() - start < EXPIRE_MS) {
     sleepSync(POLL_MS);
     const verdict = readVerdict(file);
+    // The card never reached the phone: stop waiting and emit NOTHING, which parks this
+    // prompt at the desk in a couple of seconds instead of nine minutes. The app has
+    // already recorded the reason on the record, so the failure is visible rather than
+    // silent — the whole point of this path.
+    if (verdict === 'undeliverable') return;
     if (verdict) {
       emitDecision(verdict); // allow | deny → returned to Claude Code
       return;

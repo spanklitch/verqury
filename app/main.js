@@ -69,7 +69,7 @@ function ptyKill(id) {
   if (p) { try { p.kill(); } catch { /* already gone */ } ptys.delete(id); }
   return { id };
 }
-import { addLog, writeHeartbeat, clearHeartbeat, readHeartbeat, readConfig, writeConfig } from 'verqury-core/files';
+import { addLog, writeHeartbeat, clearHeartbeat, readHeartbeat } from 'verqury-core/files';
 import * as api from './src/api.js';
 import { watchDataRoot } from './src/watcher.js';
 import { createOtelReceiver } from './src/otel-receiver.js';
@@ -174,23 +174,7 @@ function createWindow(show = true) {
   // "Where we left off": nudge the renderer to refresh resume reminders each time
   // the window is brought to the foreground (tray-show or first open).
   win.on('show', () => { if (win && !win.isDestroyed()) win.webContents.send('app:shown'); });
-  // Closing the window does NOT quit (design principle #4) — say so, once, the first
-  // time it happens. An instance once ran 7d20h unnoticed because nothing ever did.
-  win.on('close', () => { if (tray) hintStillResident(); });
   return win;
-}
-
-// One-time nudge that Verqury is still alive in the tray. Persisted in config so it
-// is a one-off, not a nag; the tray tooltip carries the same fact permanently.
-function hintStillResident() {
-  try {
-    const cfg = readConfig(root);
-    if (cfg.closeHintShown) return;
-    writeConfig(root, { ...cfg, closeHintShown: true });
-    notify('Still running in the tray — open it from the tray icon, or Quit there to exit.');
-  } catch {
-    // Never let a hint break closing the window.
-  }
 }
 
 // Start-on-login is implemented the Linux way: a .desktop file in the user's
@@ -537,7 +521,19 @@ async function reconcileApprovals() {
           }
           const messageId = res?.result?.message_id ?? null;
           if (messageId) relayCards.set(a.id, { messageId, remindedAt: null });
-          else relayCards.delete(a.id); // send failed — retry next reconcile
+          else {
+            // The card did not land. Retrying "next reconcile" is what hid a placeholder
+            // bot token for a week: every send 401'd, every record still rode the full
+            // 9-min expiry, and nothing anywhere said so. A permission the phone will
+            // never show belongs at the desk immediately (ADR-0017). Telegram's own
+            // `description` is carried into the record so the reason is legible.
+            relayCards.delete(a.id);
+            try {
+              api.parkUndeliverable(root, a.id, res?.description || 'Telegram send failed');
+            } catch {
+              /* raced with a tap or a desk answer — that outcome wins, nothing to do */
+            }
+          }
         } else if (a.kind !== 'question' && card.messageId && !card.remindedAt && Date.now() - Date.parse(a.created) > REMIND_AFTER_MS) {
           // "expiring soon" nudge is permission-only (the hook expires at 9 min; the
           // verqury-ask skill has a longer, non-harness-bound window).
@@ -776,7 +772,16 @@ const timelineCount = () => dom("document.querySelectorAll('.timeline-entry').le
 
 async function runVerify(outDir) {
   const result = {};
+  // (-1) CREDENTIAL ISOLATION, before any block can write a secret anywhere. This runs first
+  // deliberately: block 11 saves a fixture token, and until 2026-08-14 it could land in the
+  // owner's real ~/.claude/.env (engineering-notes §17). Throwing here is the intended
+  // behaviour — the finally-block still writes verify.json, so the refusal is visible.
+  const realEnv = path.join(os.homedir(), '.claude', '.env');
+  const realEnvBefore = api.envFingerprint(realEnv);
+  let harnessEnvFile;
   try {
+    harnessEnvFile = api.isolateHarnessEnvFile(root, { realEnv });
+    result.envFileIsolated = true;
     await dom('window.__verquryReady');
     result.projects = await dom("document.querySelectorAll('.project-card').length");
     result.detailTitle = await dom("document.querySelector('.detail-title')?.textContent || null");
@@ -947,8 +952,15 @@ async function runVerify(outDir) {
     result.notifyPresenceAway = cfgNotify.presence === 'away';
     result.notifyEnabledChat = cfgNotify.enabled === true && cfgNotify.telegram?.chatId === '55501';
     result.notifyTokenNotInConfig = !JSON.stringify(cfgNotify).includes('HARNESS-SECRET'); // secret must NOT be in config.json
-    const envFile = api.envFilePath();
+    // Assert against the path WE isolated, not one re-derived from the code under test. The
+    // old line read api.envFilePath() back from the very resolver saveEnvVar had just written
+    // through, so it passed identically whether the fixture landed in a throwaway file or in
+    // the owner's real ~/.claude/.env — a test that derives its expected location from the
+    // code under test cannot detect that the location is wrong (§17).
+    const envFile = harnessEnvFile;
     result.notifyTokenInEnv = fs.existsSync(envFile) && /VERQURY_TELEGRAM_BOT_TOKEN=123:HARNESS-SECRET/.test(fs.readFileSync(envFile, 'utf8'));
+    // And the negative — the check that would actually have caught the eight-day outage.
+    result.realEnvUntouched = api.envFingerprint(realEnv) === realEnvBefore;
     // The installed hook, run as Claude Code would run it (piped payload), Away → sends.
     // The hook script ships to ~/.claude/hooks, not inside the app bundle, so in a
     // PACKAGED run (asar-less resources dir) the repo copy isn't co-located — skip the
@@ -1152,13 +1164,26 @@ async function runVerify(outDir) {
     result.aboutVersionShown = await dom("(document.querySelector('.detail-sub')?.textContent||'').includes('Verqury v')");
     result.aboutSiteLink = await dom("[...document.querySelectorAll('.settings-link')].some(a=>a.getAttribute('href')==='https://verqury.com')");
 
-    // (17) Closing the window isn't quitting: the hint fires once and then stays
-    // quiet forever (a nag would be worse than the silence it replaces).
-    const hintBefore = readConfig(root).closeHintShown;
-    hintStillResident();
-    const hintAfter = readConfig(root).closeHintShown;
-    hintStillResident(); // second close: must not re-notify
-    result.closeHintOnce = !hintBefore && hintAfter === true && readConfig(root).closeHintShown === true;
+    // (17) Closing the window QUITS (ADR-0016). Wiring assertion only — actually
+    // firing it would end the harness run mid-flight — so we assert the two halves
+    // that used to make the window survive its own close: nothing listens on the
+    // window's `close` to keep it alive, and `window-all-closed` is wired. The
+    // end-to-end proof is the packaged close-to-exit probe run at release time.
+    // INFORMATIONAL ONLY — deliberately not an assertion. The first cut of this check
+    // asserted `windowClose === 0 && appWindowAllClosed === 1`, reasoning that we removed
+    // our own close listener and registered exactly one window-all-closed handler. Both
+    // constants were wrong: Electron attaches internal close wiring to BrowserWindow, and
+    // its browser init registers its own window-all-closed listener (it quits only when it
+    // is the SOLE listener — which is precisely why ours has to exist). Observed 1 and 2.
+    // Pinning those numbers would assert Electron's internals, pass on a wrong constant,
+    // and break on an Electron bump — so the real proof is the close-to-exit probe in
+    // scripts/close-probe.mjs, run against the packaged binary at release (ADR-0016).
+    const vw = BrowserWindow.getAllWindows()[0];
+    result.closeListenerCounts = {
+      windowClose: vw ? vw.listenerCount('close') : -1,
+      appWindowAllClosed: app.listenerCount('window-all-closed'),
+      windows: BrowserWindow.getAllWindows().length,
+    };
 
     // (16) Build-time meter (ADR-0013): harvest a fixture transcript through the
     // preload bridge and assert the meter renders the harvested time, not a zero.
@@ -1319,14 +1344,32 @@ app.whenReady().then(() => {
   const captureDir = process.env.VERQURY_CAPTURE;
   if (captureDir) win.webContents.once('did-finish-load', () => setTimeout(() => runCapture(captureDir), 900));
 
+  // Close-to-exit probe (dev-only, like VERQURY_VERIFY/VERQURY_CAPTURE). ADR-0016's claim is
+  // that closing the window ENDS the process — which the verify harness cannot assert without
+  // ending its own run, and which listener counts cannot prove (see closeListenerCounts).
+  // Given this env var, the app writes the marker file and closes its window; the external
+  // probe (scripts/close-probe.mjs) then measures whether the process actually exits.
+  const closeProbe = process.env.VERQURY_CLOSE_PROBE;
+  if (closeProbe) {
+    win.webContents.once('did-finish-load', () => setTimeout(() => {
+      try { fs.writeFileSync(closeProbe, `${process.pid}\n`); } catch { /* probe reads the exit, not the file */ }
+      win.close(); // the real gesture: exactly what the X button does
+    }, 900));
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  // Stay resident in the tray (a quiet companion). Quit explicitly via the menu.
-  if (process.platform !== 'darwin' && !tray) app.quit();
+  // Closing the window QUITS (reverses design principle #4; ADR-0016). Staying resident
+  // relied on the tray being reachable, and setupTray() fails silently — which left
+  // instances alive with no window and no icon, unreachable except by PID. One had been
+  // up 15 h spinning the relay long-poll. `before-quit` clears our heartbeat, so the
+  // gate falls back to the desk from the next prompt on: away-mode relay needs the app
+  // running, and that is the accepted trade for a close button that closes.
+  app.quit();
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());

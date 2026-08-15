@@ -8,7 +8,7 @@ import { projectTimeline } from '../src/memory.js';
 import { approvalsDir } from '../src/paths.js';
 import {
   createApproval, getApproval, listApprovals, pendingApprovals,
-  answerApproval, expireApproval, APPROVAL_DECISIONS,
+  answerApproval, expireApproval, markUndeliverable, APPROVAL_DECISIONS,
   createQuestion, answerQuestion, markEmailed, APPROVAL_KINDS,
   sweepExpiredApprovals, PERMISSION_EXPIRE_MS, QUESTION_EXPIRE_MS,
 } from '../src/approvals.js';
@@ -74,6 +74,40 @@ test('expireApproval parks a pending record; a prior answer wins', () => {
 // The dependency-free hook (hooks/verqury-permission.cjs) writes records with its own
 // flat-YAML serializer. This proves core reads a hook-shaped file back identically —
 // the contract that keeps the two writers in lock-step.
+test('markUndeliverable parks a card the phone will never see, and says why', () => {
+  const root = tmpRoot();
+  const a = createApproval(root, { tool: 'Bash', summary: 'rm build' });
+  const u = markUndeliverable(root, a.id, 'Unauthorized');
+  assert.equal(u.status, 'undeliverable');
+  assert.equal(u.error, 'Unauthorized'); // the reason is the whole point — never dropped
+  assert.ok(u.answered);
+  assert.equal(pendingApprovals(root).length, 0); // the waiter must stop waiting
+  assert.equal(listApprovals(root, { status: 'undeliverable' })[0].error, 'Unauthorized');
+});
+
+test('a real outcome beats a failed send; a missing reason still records one', () => {
+  const root = tmpRoot();
+  // A tap (or a desk answer) that landed before the send failed is the truth.
+  const a = createApproval(root, { tool: 'Bash', summary: 'ship it' });
+  answerApproval(root, a.id, 'allow');
+  const kept = markUndeliverable(root, a.id, 'Unauthorized');
+  assert.equal(kept.status, 'answered');
+  assert.equal(kept.decision, 'allow');
+
+  // Telegram does not always hand us a description; the record must still explain itself.
+  const b = createApproval(root, { tool: 'Bash', summary: 'rm -rf' });
+  assert.equal(markUndeliverable(root, b.id).error, 'send failed');
+});
+
+test('an undeliverable card echoes into the project timeline', () => {
+  const root = tmpRoot();
+  createProject(root, { name: 'Aurora' });
+  const a = createApproval(root, { tool: 'Bash', summary: 'rm build', project: 'aurora' });
+  markUndeliverable(root, a.id, 'Unauthorized');
+  const tl = projectTimeline(root, 'aurora');
+  assert.ok(tl.some((e) => /undeliverable/i.test(e.title || '')));
+});
+
 test('core reads a hook-serialized record (cross-reader contract)', () => {
   const root = tmpRoot();
   fs.mkdirSync(approvalsDir(root), { recursive: true });
