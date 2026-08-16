@@ -80,6 +80,34 @@ export function answerCallbackQuery(token, callbackQueryId, text) {
 // Long-poll for updates. `timeoutS` is the server-side hold; the socket timeout is a
 // few seconds beyond it. Single-consumer — only the app calls this. Requests both
 // callback_query (button taps, Phase B) and message (typed replies, Phase C).
+// ---- Long-poll backoff (engineering-notes §17) ----
+// A HEALTHY getUpdates blocks server-side for ~50 s, which paces the loop for free. A
+// REJECTED one returns INSTANTLY — and because api() resolves any HTTP status as a
+// fulfilled promise, `catch` never fires, so a caller whose only backoff lives in `catch`
+// spins as fast as the network allows. A placeholder bot token did exactly that here: 401
+// on every call for 15 h, ~20 min of CPU, two sockets held open, while its owner believed
+// the app was closed.
+
+export const RELAY_BACKOFF_MIN_MS = 5000;
+export const RELAY_BACKOFF_MAX_MS = 5 * 60 * 1000;
+
+// Did this poll actually succeed? Telegram always answers `{ok: …}`, and api() resolves
+// `{ok:false}` for an unparseable body too — so anything but a literal `true` is a failure.
+export function pollFailed(res) {
+  return !res || res.ok !== true;
+}
+
+// The delay before the next attempt. Doubles from MIN up to MAX, and honours Telegram's
+// own `parameters.retry_after` (sent with 429) when it gives one. `prevMs` of 0 means the
+// last poll was healthy, so a fresh failure starts the ladder at MIN rather than at zero.
+export function nextRelayBackoff(prevMs = 0, res = null) {
+  const retryAfterS = Number(res?.parameters?.retry_after);
+  if (Number.isFinite(retryAfterS) && retryAfterS > 0) {
+    return Math.min(Math.ceil(retryAfterS * 1000), RELAY_BACKOFF_MAX_MS);
+  }
+  return Math.min(prevMs > 0 ? prevMs * 2 : RELAY_BACKOFF_MIN_MS, RELAY_BACKOFF_MAX_MS);
+}
+
 export function getUpdates(token, offset, { timeoutS = 50 } = {}) {
   return api(token, 'getUpdates', { offset, timeout: timeoutS, allowed_updates: ['callback_query', 'message'] }, { timeoutMs: (timeoutS + 10) * 1000 });
 }

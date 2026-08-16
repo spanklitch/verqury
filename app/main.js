@@ -366,17 +366,36 @@ function syncRelay() {
 }
 
 async function relayLoop(gen, token, chatId) {
+  // 0 means "the last poll was healthy" — a good long-poll blocks ~50 s server-side, which
+  // paces this loop for free and needs no delay of our own.
+  let backoffMs = 0;
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
   while (gen === relayGen) {
     try {
       const res = await telegram.getUpdates(token, relayOffset);
       if (gen !== relayGen) return;
+      // A REJECTED poll — 401 (bad token), 409 (a second consumer), 429 (rate limit) —
+      // returns instantly and never throws, so the `catch` below cannot see it. Before
+      // this branch existed the loop hammered Telegram for 15 h straight on 401s while
+      // looking, from the outside, exactly like a healthy long-poll (eng-notes §17).
+      if (telegram.pollFailed(res)) {
+        backoffMs = telegram.nextRelayBackoff(backoffMs, res);
+        console.warn(
+          `Telegram long-poll rejected (${res?.error_code ?? '?'}: ${res?.description ?? 'no response'})`
+          + ` — retrying in ${Math.round(backoffMs / 1000)}s`,
+        );
+        await pause(backoffMs);
+        continue; // the while-condition re-checks gen, so a retired loop still exits
+      }
+      backoffMs = 0; // recovered — back to free pacing
       for (const u of res.result || []) {
         relayOffset = u.update_id + 1;
         if (u.callback_query) await handleCallback(u.callback_query, token, chatId);
         else if (u.message) await handleMessage(u.message, token, chatId);
       }
     } catch {
-      await new Promise((r) => setTimeout(r, 5000)); // transient network error — back off
+      backoffMs = telegram.nextRelayBackoff(backoffMs); // transient network error
+      await pause(backoffMs);
     }
   }
 }

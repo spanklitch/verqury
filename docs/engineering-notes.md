@@ -714,13 +714,17 @@ makes `createWindow(false)` start the app in the tray without showing a window.
   pause with no output. **When adding a fail-fast guard, check the outcome, not the precondition** —
   "is it configured" and "did it work" fail in completely different places.
 
-- **A 401 also makes `relayLoop` a hot loop.** Its only backoff lives in `catch`, and a 401 never
-  throws: `res.result || []` yields `[]` and the loop immediately re-requests. A healthy
-  `getUpdates` blocks ~50 s server-side; a rejected one returns instantly. The observed instance
-  had burned ~20 min of CPU across 15 h holding two ESTABLISHED sockets to `api.telegram.org` while
-  its owner believed it was closed. **Still unfixed as of this entry** (scoped out deliberately —
-  it is latent once the token is valid). The fix is to back off on any non-`ok` response, not only
-  on a thrown one.
+- **A 401 also makes `relayLoop` a hot loop — FIXED 2026-08-15.** Its only backoff lived in
+  `catch`, and a 401 never throws: `api()` resolves every HTTP status as a fulfilled promise,
+  so `res.result || []` yielded `[]` and the loop immediately re-requested. A healthy
+  `getUpdates` blocks ~50 s server-side and paces the loop for free; a rejected one returns
+  instantly. The observed instance burned ~20 min of CPU across 15 h holding two ESTABLISHED
+  sockets while its owner believed it was closed. `telegram.pollFailed(res)` now gates the
+  success path and `telegram.nextRelayBackoff()` supplies a doubling 5 s → 5 min ladder that
+  honours Telegram's own `parameters.retry_after` (429). **Measured with a deliberately invalid
+  token: 4 attempts in 45 s (5s/10s/20s/40s), against thousands before.** 401 rides the ordinary
+  ladder rather than being parked forever — saving a new token bumps `relayGen` and starts a
+  fresh loop at zero backoff, so recovery is immediate.
 
 - **Telling a wedged app from a working one, updated.** §16's advice was to check for ESTABLISHED
   `:443` sockets as evidence the Telegram long-poll is alive. That is now known to be insufficient:
@@ -776,6 +780,12 @@ makes `createWindow(false)` start the app in the tray without showing a window.
 - **Hard-exit the probe on timeout.** Electron's zygote grandchildren hold the spawned stdio
   pipes open, so `process.exitCode = 1` alone leaves the probe hanging well past its own
   deadline. `process.exit(1)` after the kill.
+
+- **`setsid cmd &` does NOT give you a killable group via `$!`.** setsid starts a NEW session,
+  so the shell's `$!` is the pre-exec wrapper, not the new process group leader — `kill -TERM
+  -$!` then misses everything and leaks the whole Electron tree. This leaked strays twice in one
+  session. Either capture the real PGID from inside (`ps -o pgid= -p <child>`), or spawn from
+  Node with `detached: true` and kill `-child.pid`.
 
 - **`$?` after a pipe is the pipe's status, not the probe's.** `node scripts/close-probe.mjs … | tail`
   reports tail's exit code — it will read 0 through a failing probe. Use `PIPESTATUS[0]`, or do

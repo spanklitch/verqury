@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A rejected Telegram connection no longer spins the CPU.** When the relay's connection was
+  refused — a bad token, a rate limit, a second copy competing for the same messages — Verqury
+  retried as fast as the network allowed, which is how a stale token quietly burned twenty
+  minutes of processor time over fifteen hours while looking perfectly idle. It now waits
+  between retries, backing off from five seconds to five minutes, and respects Telegram's own
+  "try again in N seconds" when it sends one. It also says what went wrong instead of failing
+  in silence.
+
 ## [0.7.0] - 2026-08-14
 
 ### Fixed
